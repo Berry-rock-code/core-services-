@@ -16,39 +16,51 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class SystemIntegrationServiceTest {
-
+class SystemIntegrationServiceTest
+{
     @Mock
     private BuildiumClient buildiumClient;
+
     @Mock
     private GoogleSheetsClient googleSheetsClient;
+
     @Mock
     private SalesforceClient salesforceClient;
+
     @Mock
     private AuditService auditService;
 
     private SystemIntegrationService service;
 
     @BeforeEach
-    void setUp() {
+    void setUp()
+    {
         MockitoAnnotations.openMocks(this);
-        service = new SystemIntegrationService(buildiumClient, googleSheetsClient, salesforceClient, auditService);
+        service = new SystemIntegrationService(
+                buildiumClient,
+                googleSheetsClient,
+                salesforceClient,
+                auditService
+        );
     }
 
     @Test
-    void testPingClients() {
-        // Arrange
+    void testPingClients()
+    {
         when(buildiumClient.ping()).thenReturn(true);
         when(googleSheetsClient.ping()).thenReturn(true);
         when(salesforceClient.isConfigured()).thenReturn(false);
 
-        // Act
         Map<String, Object> result = service.pingClients();
 
-        // Assert
         assertTrue((Boolean) result.get("buildium"));
         assertTrue((Boolean) result.get("googleSheets"));
         assertEquals(false, result.get("salesforceConfigured"));
-        verify(auditService).logEvent("PING_CHECK", "SYSTEM", "Verified integration client placeholders.");
+
+        verify(auditService).logEvent(
+                "PING_CHECK",
+                "SYSTEM",
+                "Verified integration client placeholders."
+        );
     }
 }

@@ -10,7 +10,6 @@ server:
     include-message: always
     include-binding-errors: always
 
-# Expose basic actuator endpoints
 management:
   endpoints:
     web:
@@ -20,14 +19,28 @@ management:
     health:
       show-details: when_authorized
 
-# Custom configuration properties mapping
 integration:
   vendor:
     buildium:
+      enabled: ${BUILDIUM_ENABLED:true}
       base-url: ${BUILDIUM_BASE_URL:https://api.buildium.com}
       client-id: ${BUILDIUM_CLIENT_ID:}
       client-secret: ${BUILDIUM_CLIENT_SECRET:}
+      connect-timeout-seconds: ${BUILDIUM_CONNECT_TIMEOUT_SECONDS:10}
+      read-timeout-seconds: ${BUILDIUM_READ_TIMEOUT_SECONDS:30}
+      page-size: ${BUILDIUM_PAGE_SIZE:100}
+
     google-sheets:
+      enabled: ${GOOGLE_SHEETS_ENABLED:true}
+      application-name: ${GOOGLE_SHEETS_APPLICATION_NAME:integration-hub}
+      spreadsheet-id: ${GOOGLE_SHEETS_SPREADSHEET_ID:}
       credentials-path: ${GOOGLE_APPLICATION_CREDENTIALS:}
+
     salesforce:
       enabled: ${SALESFORCE_ENABLED:false}
+      login-url: ${SALESFORCE_LOGIN_URL:https://login.salesforce.com}
+      client-id: ${SALESFORCE_CLIENT_ID:}
+      username: ${SALESFORCE_USERNAME:}
+      private-key-path: ${SALESFORCE_PRIVATE_KEY_PATH:}
+      api-version: ${SALESFORCE_API_VERSION:v61.0}
+      token-skew-seconds: ${SALESFORCE_TOKEN_SKEW_SECONDS:60}
