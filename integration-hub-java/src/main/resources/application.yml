@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: integration-hub
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+
+server:
+  port: ${PORT:8080}
+  error:
+    include-message: always
+    include-binding-errors: always
+
+# Expose basic actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
+
+# Custom configuration properties mapping
+integration:
+  vendor:
+    buildium:
+      base-url: ${BUILDIUM_BASE_URL:https://api.buildium.com}
+      client-id: ${BUILDIUM_CLIENT_ID:}
+      client-secret: ${BUILDIUM_CLIENT_SECRET:}
+    google-sheets:
+      credentials-path: ${GOOGLE_APPLICATION_CREDENTIALS:}
+    salesforce:
+      enabled: ${SALESFORCE_ENABLED:false}
