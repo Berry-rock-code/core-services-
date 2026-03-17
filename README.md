@@ -2,7 +2,7 @@
 
 The **Integration Hub** is a core, unified platform service designed to orchestrate and unify automations across Berry Rock's technical infrastructure (e.g., Buildium, Google Sheets, Salesforce). 
 
-This is not a toy demo; it is an enterprise-grade Java 21 / Spring Boot 3 foundation built for maintainability, clarity, and future compliance audits (e.g., SOC2).
+This service has been recently refactored into a proper Java 21 + Spring Boot + Maven project. It serves as an enterprise-grade foundation built for maintainability, clarity, and future compliance audits (e.g., SOC2), running seamlessly with standard backend conventions.
 
 ## Why Java & Spring Boot?
 Java and Spring Boot were chosen for this foundational layer to provide:
@@ -34,6 +34,15 @@ The server will start on `http://localhost:8080`.
 - **Health check:** `http://localhost:8080/actuator/health`
 - **Ping test:** `http://localhost:8080/api/v1/ping`
 - **Service info:** `http://localhost:8080/api/v1/info`
+
+## Integrations
+This service acts as a centralized boundary for external integrations. Clients handles external services.
+Currently included integrations:
+- `BuildiumClient`
+- `GoogleSheetsClient`
+- `SalesforceClient`
+
+If adding a new integration boundary, define an interface and its implementation in the `client/` package, adhering to the standard wrapper approach. Keep configurations mapped into `application.yml`.
 
 ## Configuration
 This service uses environment variables to overlay configurations mapped inside `src/main/resources/application.yml`. 
