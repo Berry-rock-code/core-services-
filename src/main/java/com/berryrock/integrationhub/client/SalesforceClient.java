@@ -11,4 +11,6 @@ package com.berryrock.integrationhub.client;
 public interface SalesforceClient {
     boolean isConfigured();
     // TODO: Add fetch/upsert objects
+
+    java.util.List<com.berryrock.integrationhub.model.SalesforceAddressRecord> fetchAddressesForGoogleSheetBuildiumSync();
 }
