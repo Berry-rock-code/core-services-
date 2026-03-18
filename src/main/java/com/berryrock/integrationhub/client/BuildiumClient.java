@@ -10,4 +10,6 @@ public interface BuildiumClient
     List<Map<String, Object>> getRentalsPage(int limit, int offset);
 
     List<Map<String, Object>> getAllRentals();
+
+    List<com.berryrock.integrationhub.model.BuildiumAddressRecord> fetchActiveLeaseAddresses();
 }

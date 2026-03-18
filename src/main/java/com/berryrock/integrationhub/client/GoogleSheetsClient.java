@@ -13,4 +13,7 @@ public interface GoogleSheetsClient {
     boolean ping();
     
     // TODO: Add methods like void upsertRows(String sheetTitle, List<List<Object>> rows)
+
+    java.util.List<com.berryrock.integrationhub.model.GoogleSheetAddressRow> fetchAddressRows(String sheetId, String sheetName);
+    void batchUpdateAddressMatches(String sheetId, String sheetName, java.util.List<com.berryrock.integrationhub.model.SheetBatchUpdateRequest> updates);
 }
