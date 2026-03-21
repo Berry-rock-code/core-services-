@@ -1,91 +1,94 @@
 package com.berryrock.integrationhub.util;
 
+import org.springframework.stereotype.Component;
 import org.apache.commons.lang3.StringUtils;
 
+@Component
 public class AddressNormalizer {
 
-    public static String normalize(String rawAddress) {
-        if (StringUtils.isBlank(rawAddress)) {
-            return "";
+    public String normalize(String address) {
+        if (StringUtils.isBlank(address)) {
+            return null;
         }
 
-        String normalized = rawAddress.toUpperCase();
+        String normalized = address.toUpperCase()
+                .replace(".", "")
+                .replace(",", "")
+                .replace("'", "");
 
-        // Remove punctuation that hurts matching
-        normalized = normalized.replaceAll("[.,']", "");
+        // Replace common suffixes
+        normalized = normalized.replaceAll("\\bSTREET\\b", "ST")
+                .replaceAll("\\bAVENUE\\b", "AVE")
+                .replaceAll("\\bPLACE\\b", "PL")
+                .replaceAll("\\bROAD\\b", "RD")
+                .replaceAll("\\bDRIVE\\b", "DR")
+                .replaceAll("\\bLANE\\b", "LN")
+                .replaceAll("\\bBOULEVARD\\b", "BLVD")
+                .replaceAll("\\bCOURT\\b", "CT")
+                .replaceAll("\\bTERRACE\\b", "TER");
 
-        // Collapse repeated spaces and trim
-        normalized = normalized.replaceAll("\\s+", " ").trim();
+        // Directionals
+        normalized = normalized.replaceAll("\\bNORTH\\b", "N")
+                .replaceAll("\\bSOUTH\\b", "S")
+                .replaceAll("\\bEAST\\b", "E")
+                .replaceAll("\\bWEST\\b", "W")
+                .replaceAll("\\bNORTHEAST\\b", "NE")
+                .replaceAll("\\bNORTHWEST\\b", "NW")
+                .replaceAll("\\bSOUTHEAST\\b", "SE")
+                .replaceAll("\\bSOUTHWEST\\b", "SW");
 
-        // Standardize common street suffixes (adding word boundaries to avoid replacing parts of words)
-        normalized = normalized.replaceAll("\\bSTREET\\b", "ST");
-        normalized = normalized.replaceAll("\\bAVENUE\\b", "AVE");
-        normalized = normalized.replaceAll("\\bROAD\\b", "RD");
-        normalized = normalized.replaceAll("\\bDRIVE\\b", "DR");
-        normalized = normalized.replaceAll("\\bBOULEVARD\\b", "BLVD");
-        normalized = normalized.replaceAll("\\bLANE\\b", "LN");
-        normalized = normalized.replaceAll("\\bCOURT\\b", "CT");
-        normalized = normalized.replaceAll("\\bPLACE\\b", "PL");
 
-        // Standardize directional markers
-        normalized = normalized.replaceAll("\\bNORTH\\b", "N");
-        normalized = normalized.replaceAll("\\bSOUTH\\b", "S");
-        normalized = normalized.replaceAll("\\bEAST\\b", "E");
-        normalized = normalized.replaceAll("\\bWEST\\b", "W");
-        normalized = normalized.replaceAll("\\bNORTHEAST\\b", "NE");
-        normalized = normalized.replaceAll("\\bNORTHWEST\\b", "NW");
-        normalized = normalized.replaceAll("\\bSOUTHEAST\\b", "SE");
-        normalized = normalized.replaceAll("\\bSOUTHWEST\\b", "SW");
+        normalized = normalized.replaceAll("\\bSAINT LOUIS\\b", "STL")
+                .replaceAll("\\bST LOUIS\\b", "STL");
 
-        return normalized.trim();
+        normalized = normalized.replaceAll("\\bSAINT\\b", "ST");
+
+        // Clean up whitespace
+        normalized = normalized.trim().replaceAll("\\s+", " ");
+
+        return normalized;
     }
 
-    public static String normalizeCity(String city) {
+    public String normalizeCity(String city) {
         if (StringUtils.isBlank(city)) {
-            return "";
+            return null;
         }
 
-        String normalized = city.toUpperCase();
+        String normalized = city.toUpperCase()
+                .replace(".", "")
+                .replace(",", "");
 
-        // Remove punctuation
-        normalized = normalized.replaceAll("[.,']", "");
+        normalized = normalized.replaceAll("\\bSAINT LOUIS\\b", "STL")
+                           .replaceAll("\\bST LOUIS\\b", "STL");
 
-        normalized = normalized.replaceAll("\\s+", " ").trim();
+        normalized = normalized.replaceAll("\\bSAINT\\b", "ST");
 
-        // Standardize city variants
-        normalized = normalized.replaceAll("\\bSAINT LOUIS\\b", "STL");
-        normalized = normalized.replaceAll("\\bST LOUIS\\b", "STL");
+        normalized = normalized.trim().replaceAll("\\s+", " ");
 
-        return normalized.trim();
+        return normalized;
     }
 
-    public static String buildComparableKey(String normalizedAddressLine, String normalizedCity, String state, String postalCode) {
-        StringBuilder keyBuilder = new StringBuilder();
-
-        if (StringUtils.isNotBlank(normalizedAddressLine)) {
-            keyBuilder.append(normalizedAddressLine);
+    public String buildComparableKey(String address, String city, String state, String zip) {
+        StringBuilder sb = new StringBuilder();
+        if (address != null) {
+            sb.append(address);
         }
 
-        if (StringUtils.isNotBlank(normalizedCity)) {
-            if (!keyBuilder.isEmpty()) keyBuilder.append("|");
-            keyBuilder.append(normalizedCity);
+        if (city != null) {
+            sb.append("|").append(city);
         }
 
-        if (StringUtils.isNotBlank(state)) {
-            if (!keyBuilder.isEmpty()) keyBuilder.append("|");
-            keyBuilder.append(state.toUpperCase().trim());
+        if (state != null) {
+            sb.append("|").append(state);
         }
 
-        if (StringUtils.isNotBlank(postalCode)) {
-            if (!keyBuilder.isEmpty()) keyBuilder.append("|");
-            // Only use the first 5 digits of postal code
-            String cleanZip = postalCode.replaceAll("[^0-9]", "");
-            if (cleanZip.length() > 5) {
-                cleanZip = cleanZip.substring(0, 5);
+        if (zip != null) {
+            if (zip.length() > 5 && zip.contains("-")) {
+                zip = zip.substring(0, 5);
             }
-            keyBuilder.append(cleanZip);
+            sb.append("|").append(zip);
         }
 
-        return keyBuilder.toString();
+        return sb.toString();
     }
 }

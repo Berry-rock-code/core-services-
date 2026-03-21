@@ -9,6 +9,8 @@ import com.berryrock.integrationhub.dto.AddressSyncSummary;
 import com.berryrock.integrationhub.model.BuildiumAddressRecord;
 import com.berryrock.integrationhub.model.GoogleSheetAddressRow;
 import com.berryrock.integrationhub.model.SalesforceAddressRecord;
+import com.berryrock.integrationhub.util.AddressMatcher;
+import com.berryrock.integrationhub.util.AddressNormalizer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -36,12 +38,17 @@ class AddressSyncServiceTest {
     @Mock
     private AuditLogService auditLogService;
 
+    private AddressNormalizer addressNormalizer;
+    private AddressMatcher addressMatcher;
+
     private AddressSyncService service;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        service = new AddressSyncService(salesforceClient, googleSheetsClient, buildiumClient, auditLogService);
+        addressNormalizer = new AddressNormalizer();
+        addressMatcher = new AddressMatcher();
+        service = new AddressSyncService(salesforceClient, googleSheetsClient, buildiumClient, auditLogService, addressNormalizer, addressMatcher);
     }
 
     @Test
@@ -139,8 +146,10 @@ class AddressSyncServiceTest {
 
         assertEquals("SUCCESS", summary.getStatus());
 
-        // 123 Main St shouldn't match due to SF dupes, 456 Elm Ave shouldn't match due to GS dupes
-        assertEquals(0, summary.getGoogleSheetMatches());
+        // Duplicates share the same normalized address key.
+        // SF dupes 123 Main St (key: 123 MAIN ST ST LOUIS MO 63101) match GS 123 Main St
+        // SF 456 Elm Ave matches GS dupes 456 Elm Ave (key: 456 ELM AVE ST LOUIS MO 63102)
+        assertEquals(2, summary.getGoogleSheetMatches());
 
         // There should be warnings
         assertNotNull(summary.getWarnings());

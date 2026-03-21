@@ -45,7 +45,7 @@ class AddressSyncControllerTest {
         summary.setBuildiumMatches(3);
         summary.setUnmatchedCount(2);
 
-        when(addressSyncService.run(any(AddressSyncRequest.class))).thenReturn(summary);
+        when(addressSyncService.runSync(any(AddressSyncRequest.class))).thenReturn(summary);
 
         AddressSyncRequest request = new AddressSyncRequest();
         request.setDryRun(true);
