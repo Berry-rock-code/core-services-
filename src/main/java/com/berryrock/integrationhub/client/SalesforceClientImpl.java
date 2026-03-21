@@ -1,5 +1,7 @@
 package com.berryrock.integrationhub.client;
 
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.algorithms.Algorithm;
 import com.berryrock.integrationhub.model.SalesforceAddressRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,11 +10,22 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.security.KeyFactory;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -53,17 +66,92 @@ public class SalesforceClientImpl implements SalesforceClient {
         return enabled;
     }
 
-    private String getAccessToken() {
-        // In a complete implementation, this would use the privateKeyPath, clientId, and username
-        // to sign a JWT and request an OAuth 2.0 Bearer token from loginUrl/services/oauth2/token.
-        // For the purpose of replacing the mock, we will attempt to extract what we have or log that it is missing.
+    private static class SalesforceAuthResponse {
+        private final String accessToken;
+        private final String instanceUrl;
+
+        public SalesforceAuthResponse(String accessToken, String instanceUrl) {
+            this.accessToken = accessToken;
+            this.instanceUrl = instanceUrl;
+        }
+
+        public String getAccessToken() {
+            return accessToken;
+        }
+
+        public String getInstanceUrl() {
+            return instanceUrl;
+        }
+    }
+
+    private SalesforceAuthResponse authenticate() {
         if (clientId == null || clientId.isEmpty()) {
             throw new IllegalStateException("Salesforce client-id is missing from configuration");
         }
+        if (username == null || username.isEmpty()) {
+            throw new IllegalStateException("Salesforce username is missing from configuration");
+        }
+        if (privateKeyPath == null || privateKeyPath.isEmpty()) {
+            throw new IllegalStateException("Salesforce private-key-path is missing from configuration");
+        }
 
-        // Simulating the token retrieval since we do not have an actual private key to sign the JWT in this test environment.
-        log.info("Simulating Salesforce JWT Bearer flow for user: {}", username);
-        return "externalized_token_" + clientId.hashCode();
+        log.info("Initiating Salesforce JWT Bearer token flow for user: {}", username);
+
+        try {
+            // Load Private Key
+            String keyContent = new String(Files.readAllBytes(Paths.get(privateKeyPath)))
+                    .replaceAll("-----BEGIN PRIVATE KEY-----", "")
+                    .replaceAll("-----END PRIVATE KEY-----", "")
+                    .replaceAll("\\s+", "");
+
+            byte[] keyBytes = Base64.getDecoder().decode(keyContent);
+            PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
+            KeyFactory kf = KeyFactory.getInstance("RSA");
+            RSAPrivateKey privateKey = (RSAPrivateKey) kf.generatePrivate(spec);
+
+            Algorithm algorithm = Algorithm.RSA256(null, privateKey);
+
+            Instant now = Instant.now();
+            String jwt = JWT.create()
+                    .withIssuer(clientId)
+                    .withSubject(username)
+                    .withAudience(loginUrl)
+                    .withExpiresAt(Date.from(now.plusSeconds(180))) // Give it a generous 3 min expiry window for transit
+                    .sign(algorithm);
+
+            // Make request for token
+            String tokenUrl = loginUrl + "/services/oauth2/token";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
+            body.add("assertion", jwt);
+
+            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    tokenUrl,
+                    HttpMethod.POST,
+                    request,
+                    new ParameterizedTypeReference<Map<String, Object>>() {}
+            );
+
+            Map<String, Object> respBody = response.getBody();
+            if (respBody == null || !respBody.containsKey("access_token") || !respBody.containsKey("instance_url")) {
+                throw new IllegalStateException("Token response was missing required fields. Body keys: " + (respBody != null ? respBody.keySet() : "null"));
+            }
+
+            return new SalesforceAuthResponse(
+                    (String) respBody.get("access_token"),
+                    (String) respBody.get("instance_url")
+            );
+
+        } catch (Exception e) {
+            log.error("Salesforce JWT authentication failed: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to authenticate with Salesforce", e);
+        }
     }
 
     @Override
@@ -75,28 +163,26 @@ public class SalesforceClientImpl implements SalesforceClient {
 
         log.info("Fetching Salesforce records for sync");
 
-        String accessToken;
+        SalesforceAuthResponse authResponse;
         try {
-            accessToken = getAccessToken();
+            authResponse = authenticate();
         } catch (Exception e) {
-            log.error("Failed to authenticate with Salesforce: {}", e.getMessage());
+            // The actual real cause is already logged in authenticate(), but we capture it here to abort the sync.
+            log.error("Aborting Salesforce sync due to authentication failure. Cause: {}", e.getMessage());
             return new ArrayList<>();
         }
 
-        // Since loginUrl is https://login.salesforce.com or test.salesforce.com,
-        // a real implementation uses the "instance_url" returned from the token endpoint.
-        // We will fallback to the loginUrl domain for the API call in this simulated auth flow.
-        String instanceUrl = loginUrl;
+        String instanceUrl = authResponse.getInstanceUrl();
+        log.info("Salesforce Query Host (instance_url): {}", instanceUrl);
 
         String soql = "SELECT Id, Property_Address__c, Property_City__c, Property_State__c, Property_Zip__c FROM Opportunity WHERE StageName = 'Closed Won'";
         String queryUrl = instanceUrl + "/services/data/" + apiVersion + "/query?q={soql}";
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(accessToken);
+        headers.setBearerAuth(authResponse.getAccessToken());
         HttpEntity<?> entity = new HttpEntity<>(headers);
 
         try {
-            // Actual REST execution for real integration
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                     queryUrl,
                     HttpMethod.GET,
@@ -107,8 +193,7 @@ public class SalesforceClientImpl implements SalesforceClient {
 
             return parseSalesforceResponse(response.getBody());
         } catch (Exception e) {
-            log.error("Failed to fetch from Salesforce: {}", e.getMessage());
-            // Return empty list on failure rather than crashing workflow
+            log.error("Failed to fetch from Salesforce using host {}: {}", instanceUrl, e.getMessage());
             return new ArrayList<>();
         }
     }
