@@ -1,104 +1,163 @@
 package com.berryrock.integrationhub.service;
 
+import com.berryrock.integrationhub.audit.AuditLogService;
+import com.berryrock.integrationhub.client.BuildiumClient;
+import com.berryrock.integrationhub.client.GoogleSheetsClient;
+import com.berryrock.integrationhub.client.SalesforceClient;
 import com.berryrock.integrationhub.dto.AddressSyncRequest;
 import com.berryrock.integrationhub.dto.AddressSyncSummary;
-import com.berryrock.integrationhub.model.AddressRecord;
+import com.berryrock.integrationhub.model.BuildiumAddressRecord;
+import com.berryrock.integrationhub.model.GoogleSheetAddressRow;
+import com.berryrock.integrationhub.model.SalesforceAddressRecord;
+import com.berryrock.integrationhub.model.SheetBatchUpdateRequest;
+import com.berryrock.integrationhub.util.AddressMatcher;
+import com.berryrock.integrationhub.util.AddressNormalizer;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
-public class AddressSyncService
-{
-    public AddressSyncSummary runSync(AddressSyncRequest request)
-    {
-        List<AddressRecord> salesforceRecords = buildMockSalesforceRecords();
-        List<AddressRecord> googleSheetRows = buildMockGoogleSheetRows();
-        List<AddressRecord> buildiumRecords = request.isEnrichBuildium()
-                ? buildMockBuildiumRecords()
-                : new ArrayList<>();
+public class AddressSyncService {
 
-        int googleSheetMatches = countMatches(salesforceRecords, googleSheetRows);
-        int buildiumMatches = countMatches(googleSheetRows, buildiumRecords);
+    private final SalesforceClient salesforceClient;
+    private final GoogleSheetsClient googleSheetsClient;
+    private final BuildiumClient buildiumClient;
+    private final AuditLogService auditLogService;
+    private final AddressNormalizer addressNormalizer;
+    private final AddressMatcher addressMatcher;
 
+    public AddressSyncService(SalesforceClient salesforceClient,
+                              GoogleSheetsClient googleSheetsClient,
+                              BuildiumClient buildiumClient,
+                              AuditLogService auditLogService,
+                              AddressNormalizer addressNormalizer,
+                              AddressMatcher addressMatcher) {
+        this.salesforceClient = salesforceClient;
+        this.googleSheetsClient = googleSheetsClient;
+        this.buildiumClient = buildiumClient;
+        this.auditLogService = auditLogService;
+        this.addressNormalizer = addressNormalizer;
+        this.addressMatcher = addressMatcher;
+    }
+
+    public AddressSyncSummary runSync(AddressSyncRequest request) {
         AddressSyncSummary summary = new AddressSyncSummary();
         summary.setStatus("SUCCESS");
-        summary.setSalesforceRecordsFetched(salesforceRecords.size());
-        summary.setGoogleSheetRowsFetched(googleSheetRows.size());
-        summary.setBuildiumRecordsFetched(buildiumRecords.size());
-        summary.setGoogleSheetMatches(googleSheetMatches);
-        summary.setBuildiumMatches(buildiumMatches);
-        summary.setUnmatchedCount(Math.max(0, salesforceRecords.size() - googleSheetMatches));
 
-        if (request.isDryRun())
-        {
+        if (request.isDryRun()) {
             summary.getWarnings().add("Dry run enabled. No external systems were modified.");
+        }
+
+        // 1. Fetch
+        List<SalesforceAddressRecord> sfRecords = salesforceClient.fetchAddressesForGoogleSheetBuildiumSync();
+        List<GoogleSheetAddressRow> gsRows = googleSheetsClient.fetchAddressRows(request.getSheetId(), request.getSheetName());
+        List<BuildiumAddressRecord> bdRecords = request.isEnrichBuildium()
+                ? buildiumClient.fetchActiveLeaseAddresses()
+                : new ArrayList<>();
+
+        summary.setSalesforceRecordsFetched(sfRecords.size());
+        summary.setGoogleSheetRowsFetched(gsRows.size());
+        summary.setBuildiumRecordsFetched(bdRecords.size());
+
+        // 2. Normalize
+        sfRecords.forEach(r -> r.setNormalizedAddress(
+                createFullNormalizedAddress(r.getAddressLine(), r.getCity(), r.getState(), r.getPostalCode())
+        ));
+        gsRows.forEach(r -> r.setNormalizedAddress(
+                createFullNormalizedAddress(r.getAddress(), r.getCity(), r.getState(), r.getPostalCode())
+        ));
+        bdRecords.forEach(r -> r.setNormalizedAddress(
+                createFullNormalizedAddress(r.getRawAddress(), r.getCity(), r.getState(), r.getPostalCode())
+        ));
+
+        // 3. Group / Index
+        Map<String, List<SalesforceAddressRecord>> sfMap = addressMatcher.groupRecordsByNormalizedAddress(sfRecords, SalesforceAddressRecord::getNormalizedAddress);
+        Map<String, List<GoogleSheetAddressRow>> gsMap = addressMatcher.groupRecordsByNormalizedAddress(gsRows, GoogleSheetAddressRow::getNormalizedAddress);
+        Map<String, List<BuildiumAddressRecord>> bdMap = addressMatcher.groupRecordsByNormalizedAddress(bdRecords, BuildiumAddressRecord::getNormalizedAddress);
+
+        // Check for duplicates
+        checkForDuplicates(sfMap, "Salesforce records", summary);
+        checkForDuplicates(gsMap, "Google Sheet rows", summary);
+        checkForDuplicates(bdMap, "Buildium records", summary);
+
+        // 4. Match
+        int sfToGsMatches = 0;
+        int gsToBdMatches = 0;
+        int unmatchedCount = 0;
+
+        List<SheetBatchUpdateRequest> updates = new ArrayList<>();
+
+        for (Map.Entry<String, List<SalesforceAddressRecord>> entry : sfMap.entrySet()) {
+            String normAddress = entry.getKey();
+            List<SalesforceAddressRecord> sfs = entry.getValue();
+
+            // Just use the first one if there are duplicates
+            SalesforceAddressRecord sf = sfs.get(0);
+
+            if (gsMap.containsKey(normAddress)) {
+                List<GoogleSheetAddressRow> gss = gsMap.get(normAddress);
+                GoogleSheetAddressRow gs = gss.get(0); // Take first
+
+                // Only count the unique normalized address once
+                sfToGsMatches++;
+
+                String buildiumId = null;
+                if (bdMap.containsKey(normAddress)) {
+                    buildiumId = bdMap.get(normAddress).get(0).getBuildiumPropertyId();
+                }
+
+                if (request.isSyncGoogleSheet() && !request.isDryRun()) {
+                    updates.add(new SheetBatchUpdateRequest(gs.getRowNumber(), sf.getOpportunityId(), buildiumId));
+                }
+            } else {
+                unmatchedCount++;
+            }
+        }
+
+        // Count Sheets to Buildium Matches for the summary (unique normalized addresses)
+        for (String normAddress : gsMap.keySet()) {
+            if (bdMap.containsKey(normAddress)) {
+                gsToBdMatches++;
+            }
+        }
+
+        summary.setGoogleSheetMatches(sfToGsMatches);
+        summary.setBuildiumMatches(gsToBdMatches);
+        summary.setUnmatchedCount(unmatchedCount);
+
+        // 5. Write back
+        if (!updates.isEmpty()) {
+            googleSheetsClient.batchUpdateAddressMatches(request.getSheetId(), request.getSheetName(), updates);
         }
 
         return summary;
     }
 
-    private int countMatches(List<AddressRecord> left, List<AddressRecord> right)
-    {
-        int matches = 0;
+    private String createFullNormalizedAddress(String address, String city, String state, String zip) {
+        String normAddr = addressNormalizer.normalize(address);
+        String normCity = addressNormalizer.normalizeCity(city);
 
-        for (AddressRecord l : left)
-        {
-            for (AddressRecord r : right)
-            {
-                if (l.getNormalizedAddress() != null
-                        && l.getNormalizedAddress().equals(r.getNormalizedAddress()))
-                {
-                    matches++;
-                    break;
-                }
+        StringBuilder sb = new StringBuilder();
+        if (normAddr != null) sb.append(normAddr);
+        if (normCity != null) sb.append(" ").append(normCity);
+        if (state != null) sb.append(" ").append(state.toUpperCase());
+        if (zip != null) sb.append(" ").append(zip);
+
+        return sb.toString().trim().replaceAll("\\s+", " ");
+    }
+
+    private <T> void checkForDuplicates(Map<String, List<T>> map, String source, AddressSyncSummary summary) {
+        for (Map.Entry<String, List<T>> entry : map.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                summary.getWarnings().add(String.format("Duplicate %s found for normalized address: %s", source, entry.getKey()));
             }
         }
-
-        return matches;
     }
 
-    private List<AddressRecord> buildMockSalesforceRecords()
-    {
-        List<AddressRecord> records = new ArrayList<>();
-        records.add(new AddressRecord("SF-001", "123 Main St Oklahoma City OK 73102", normalize("123 Main St Oklahoma City OK 73102")));
-        records.add(new AddressRecord("SF-002", "500 Oak Ave Tulsa OK 74103", normalize("500 Oak Ave Tulsa OK 74103")));
-        records.add(new AddressRecord("SF-003", "999 Missing Rd Edmond OK 73034", normalize("999 Missing Rd Edmond OK 73034")));
-        return records;
-    }
-
-    private List<AddressRecord> buildMockGoogleSheetRows()
-    {
-        List<AddressRecord> records = new ArrayList<>();
-        records.add(new AddressRecord("ROW-10", "123 Main Street Oklahoma City OK 73102", normalize("123 Main Street Oklahoma City OK 73102")));
-        records.add(new AddressRecord("ROW-11", "500 Oak Avenue Tulsa OK 74103", normalize("500 Oak Avenue Tulsa OK 74103")));
-        records.add(new AddressRecord("ROW-12", "777 Other Pl Norman OK 73069", normalize("777 Other Pl Norman OK 73069")));
-        return records;
-    }
-
-    private List<AddressRecord> buildMockBuildiumRecords()
-    {
-        List<AddressRecord> records = new ArrayList<>();
-        records.add(new AddressRecord("B-100", "123 Main Street Oklahoma City OK 73102", normalize("123 Main Street Oklahoma City OK 73102")));
-        records.add(new AddressRecord("B-101", "777 Other Place Norman OK 73069", normalize("777 Other Place Norman OK 73069")));
-        return records;
-    }
-
-    private String normalize(String address)
-    {
-        if (address == null)
-        {
-            return null;
-        }
-
-        return address.toUpperCase()
-                .replace(".", "")
-                .replace(",", "")
-                .replace("STREET", "ST")
-                .replace("AVENUE", "AVE")
-                .replace("PLACE", "PL")
-                .trim()
-                .replaceAll("\\s+", " ");
+    // For older tests that might call run(request) instead of runSync
+    public AddressSyncSummary run(AddressSyncRequest request) {
+        return runSync(request);
     }
 }

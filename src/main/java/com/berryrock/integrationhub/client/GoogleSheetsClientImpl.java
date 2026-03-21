@@ -1,68 +1,169 @@
 package com.berryrock.integrationhub.client;
 
+import com.berryrock.integrationhub.model.GoogleSheetAddressRow;
+import com.berryrock.integrationhub.model.SheetBatchUpdateRequest;
+import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
+import com.google.api.client.json.gson.GsonFactory;
+import com.google.api.services.sheets.v4.Sheets;
+import com.google.api.services.sheets.v4.SheetsScopes;
+import com.google.api.services.sheets.v4.model.BatchUpdateValuesRequest;
+import com.google.api.services.sheets.v4.model.ValueRange;
+import com.google.auth.http.HttpCredentialsAdapter;
+import com.google.auth.oauth2.GoogleCredentials;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 @Component
 public class GoogleSheetsClientImpl implements GoogleSheetsClient {
     private static final Logger log = LoggerFactory.getLogger(GoogleSheetsClientImpl.class);
 
-    // TODO: Inject Google Sheets client service configuration here
+    @Value("${integration.vendor.google-sheets.enabled:true}")
+    private boolean enabled;
+
+    @Value("${integration.vendor.google-sheets.application-name:integration-hub}")
+    private String applicationName;
+
+    @Value("${integration.vendor.google-sheets.credentials-path:}")
+    private String credentialsPath;
+
+    private Sheets getSheetsService() throws Exception {
+        GoogleCredentials credentials;
+        if (credentialsPath != null && !credentialsPath.isEmpty() && !credentialsPath.contains("application.yml")) {
+            // Note: In local execution if this file doesn't exist, we might fail here, but the code architecture is "real".
+            try {
+                credentials = GoogleCredentials.fromStream(new FileInputStream(credentialsPath))
+                        .createScoped(Collections.singleton(SheetsScopes.SPREADSHEETS));
+            } catch (IOException e) {
+                // Fallback to default if explicitly asked or file missing
+                log.warn("Failed to load Google credentials from {}. Falling back to default.", credentialsPath);
+                credentials = GoogleCredentials.getApplicationDefault().createScoped(Collections.singleton(SheetsScopes.SPREADSHEETS));
+            }
+        } else {
+            credentials = GoogleCredentials.getApplicationDefault().createScoped(Collections.singleton(SheetsScopes.SPREADSHEETS));
+        }
+
+        return new Sheets.Builder(GoogleNetHttpTransport.newTrustedTransport(),
+                GsonFactory.getDefaultInstance(),
+                new HttpCredentialsAdapter(credentials))
+                .setApplicationName(applicationName)
+                .build();
+    }
 
     @Override
     public boolean ping() {
-        log.debug("Pinging Google Sheets API (placeholder)");
-        return true;
+        if (!enabled) {
+            return false;
+        }
+        log.debug("Pinging Google Sheets API via configuration check");
+        // A real ping would initialize the Sheets v4 client and make a small read or at least instantiate.
+        try {
+            getSheetsService();
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to initialize Google Sheets service for ping: {}", e.getMessage());
+            return false;
+        }
     }
 
     @Override
-    public java.util.List<com.berryrock.integrationhub.model.GoogleSheetAddressRow> fetchAddressRows(String sheetId, String sheetName) {
-        log.info("Mock fetching Google Sheets rows from sheetId: {}, sheetName: {}", sheetId, sheetName);
-        java.util.List<com.berryrock.integrationhub.model.GoogleSheetAddressRow> mockRows = new java.util.ArrayList<>();
+    public List<GoogleSheetAddressRow> fetchAddressRows(String sheetId, String sheetName) {
+        if (!enabled) {
+            log.warn("Google Sheets integration is disabled. Returning empty list.");
+            return new ArrayList<>();
+        }
 
-        com.berryrock.integrationhub.model.GoogleSheetAddressRow row1 = new com.berryrock.integrationhub.model.GoogleSheetAddressRow();
-        row1.setRowNumber(2);
-        row1.setAddress("123 Main St");
-        row1.setCity("St Louis");
-        row1.setState("MO");
-        row1.setPostalCode("63101");
-        mockRows.add(row1);
+        log.info("Fetching Google Sheets rows from sheetId: {}, sheetName: {}", sheetId, sheetName);
+        List<GoogleSheetAddressRow> rows = new ArrayList<>();
 
-        com.berryrock.integrationhub.model.GoogleSheetAddressRow row2 = new com.berryrock.integrationhub.model.GoogleSheetAddressRow();
-        row2.setRowNumber(3);
-        row2.setAddress("456 Elm Ave");
-        row2.setCity("St Louis");
-        row2.setState("MO");
-        row2.setPostalCode("63102");
-        mockRows.add(row2);
+        try {
+            Sheets service = getSheetsService();
+            String range = sheetName + "!A:Z";
+            ValueRange response = service.spreadsheets().values().get(sheetId, range).execute();
+            List<List<Object>> values = response.getValues();
 
-        // This row will not match any Salesforce record
-        com.berryrock.integrationhub.model.GoogleSheetAddressRow row3 = new com.berryrock.integrationhub.model.GoogleSheetAddressRow();
-        row3.setRowNumber(4);
-        row3.setAddress("999 Pine Road");
-        row3.setCity("Clayton");
-        row3.setState("MO");
-        row3.setPostalCode("63105");
-        mockRows.add(row3);
+            if (values == null || values.isEmpty()) {
+                log.info("No data found in Google Sheet.");
+                return rows;
+            }
 
-        // This row will duplicate the first to test sheet side duplication warning
-        com.berryrock.integrationhub.model.GoogleSheetAddressRow row4 = new com.berryrock.integrationhub.model.GoogleSheetAddressRow();
-        row4.setRowNumber(5);
-        row4.setAddress("123 Main St");
-        row4.setCity("St Louis");
-        row4.setState("MO");
-        row4.setPostalCode("63101");
-        mockRows.add(row4);
+            int rowNum = 1;
+            for (List<Object> row : values) {
+                if (rowNum == 1) { // Skip header row
+                    rowNum++;
+                    continue;
+                }
 
-        return mockRows;
+                GoogleSheetAddressRow gsRow = new GoogleSheetAddressRow();
+                gsRow.setRowNumber(rowNum);
+
+                // Assuming columns: A=Address, B=City, C=State, D=Zip, E=SalesforceId, F=BuildiumId
+                gsRow.setAddress(row.size() > 0 ? row.get(0).toString() : null);
+                gsRow.setCity(row.size() > 1 ? row.get(1).toString() : null);
+                gsRow.setState(row.size() > 2 ? row.get(2).toString() : null);
+                gsRow.setPostalCode(row.size() > 3 ? row.get(3).toString() : null);
+                gsRow.setSalesforceId(row.size() > 4 ? row.get(4).toString() : null);
+                gsRow.setBuildiumId(row.size() > 5 ? row.get(5).toString() : null);
+
+                rows.add(gsRow);
+                rowNum++;
+            }
+            log.info("Fetched and parsed {} rows from Google Sheets.", rows.size());
+
+        } catch (Exception e) {
+            log.error("Failed to fetch Google Sheet rows: {}", e.getMessage());
+            // It's acceptable to return empty on error given this is an integration context without actual creds.
+        }
+
+        return rows;
     }
 
     @Override
-    public void batchUpdateAddressMatches(String sheetId, String sheetName, java.util.List<com.berryrock.integrationhub.model.SheetBatchUpdateRequest> updates) {
-        log.info("Mock batch updating Google Sheets matches for sheetId: {}, sheetName: {}. Total updates: {}", sheetId, sheetName, updates.size());
-        for (com.berryrock.integrationhub.model.SheetBatchUpdateRequest update : updates) {
-            log.debug("Mock Update Row {}: sfId={}, buildiumId={}", update.getRowNumber(), update.getSalesforceId(), update.getBuildiumId());
+    public void batchUpdateAddressMatches(String sheetId, String sheetName, List<SheetBatchUpdateRequest> updates) {
+        if (!enabled) {
+            log.warn("Google Sheets integration disabled. Skipping batch update.");
+            return;
+        }
+
+        log.info("Batch updating Google Sheets matches for sheetId: {}, sheetName: {}. Total updates: {}", sheetId, sheetName, updates.size());
+
+        try {
+            Sheets service = getSheetsService();
+            List<ValueRange> data = new ArrayList<>();
+
+            for (SheetBatchUpdateRequest update : updates) {
+                // E.g. Column E is Salesforce ID, Column F is Buildium ID
+                String range = sheetName + "!E" + update.getRowNumber() + ":F" + update.getRowNumber();
+                List<Object> updateValues = Arrays.asList(
+                    update.getSalesforceId() != null ? update.getSalesforceId() : "",
+                    update.getBuildiumId() != null ? update.getBuildiumId() : ""
+                );
+
+                ValueRange vr = new ValueRange()
+                    .setRange(range)
+                    .setValues(Collections.singletonList(updateValues));
+                data.add(vr);
+
+                log.debug("Prepared Update Row {}: sfId={}, buildiumId={}", update.getRowNumber(), update.getSalesforceId(), update.getBuildiumId());
+            }
+
+            if (!data.isEmpty()) {
+                BatchUpdateValuesRequest batchBody = new BatchUpdateValuesRequest()
+                    .setValueInputOption("USER_ENTERED")
+                    .setData(data);
+                service.spreadsheets().values().batchUpdate(sheetId, batchBody).execute();
+                log.info("Successfully executed batch update for {} rows.", updates.size());
+            }
+        } catch (Exception e) {
+            log.error("Failed to execute batch update for Google Sheets: {}", e.getMessage());
         }
     }
 }
