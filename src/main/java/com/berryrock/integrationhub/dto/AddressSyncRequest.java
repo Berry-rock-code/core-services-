@@ -8,6 +8,7 @@ public class AddressSyncRequest
     private Integer batchSize;
     private String sheetId;
     private String sheetName;
+    private String csvPath;
 
     public boolean isDryRun()
     {
@@ -67,5 +68,13 @@ public class AddressSyncRequest
     public void setSheetName(String sheetName)
     {
         this.sheetName = sheetName;
+    }
+
+    public String getCsvPath() {
+        return csvPath;
+    }
+
+    public void setCsvPath(String csvPath) {
+        this.csvPath = csvPath;
     }
 }
