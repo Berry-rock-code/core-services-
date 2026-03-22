@@ -44,3 +44,10 @@ integration:
       private-key-path: ${SALESFORCE_PRIVATE_KEY_PATH:}
       api-version: ${SALESFORCE_API_VERSION:v61.0}
       token-skew-seconds: ${SALESFORCE_TOKEN_SKEW_SECONDS:60}
+      fields:
+        id: ${SALESFORCE_FIELD_ID:Id}
+        full-address: ${SALESFORCE_FIELD_FULL_ADDRESS:New_Home_Address__c}
+        city: ${SALESFORCE_FIELD_CITY:}
+        state: ${SALESFORCE_FIELD_STATE:}
+        postal-code: ${SALESFORCE_FIELD_POSTAL_CODE:}
+        stage: ${SALESFORCE_FIELD_STAGE:StageName}

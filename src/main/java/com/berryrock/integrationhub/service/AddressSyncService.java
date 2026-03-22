@@ -12,14 +12,20 @@ import com.berryrock.integrationhub.model.SalesforceAddressRecord;
 import com.berryrock.integrationhub.model.SheetBatchUpdateRequest;
 import com.berryrock.integrationhub.util.AddressMatcher;
 import com.berryrock.integrationhub.util.AddressNormalizer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 @Service
 public class AddressSyncService {
+
+    private static final Logger log = LoggerFactory.getLogger(AddressSyncService.class);
 
     private final SalesforceClient salesforceClient;
     private final GoogleSheetsClient googleSheetsClient;
@@ -52,7 +58,15 @@ public class AddressSyncService {
 
         // 1. Fetch
         List<SalesforceAddressRecord> sfRecords = salesforceClient.fetchAddressesForGoogleSheetBuildiumSync();
-        List<GoogleSheetAddressRow> gsRows = googleSheetsClient.fetchAddressRows(request.getSheetId(), request.getSheetName());
+        List<GoogleSheetAddressRow> gsRows;
+
+        if (request.getCsvPath() != null && !request.getCsvPath().isEmpty()) {
+            log.info("Loading local CSV test data from: {}", request.getCsvPath());
+            gsRows = readLocalCsv(request.getCsvPath(), summary);
+        } else {
+            gsRows = googleSheetsClient.fetchAddressRows(request.getSheetId(), request.getSheetName());
+        }
+
         List<BuildiumAddressRecord> bdRecords = request.isEnrichBuildium()
                 ? buildiumClient.fetchActiveLeaseAddresses()
                 : new ArrayList<>();
@@ -128,11 +142,44 @@ public class AddressSyncService {
         summary.setUnmatchedCount(unmatchedCount);
 
         // 5. Write back
-        if (!updates.isEmpty()) {
+        if (!updates.isEmpty() && (request.getCsvPath() == null || request.getCsvPath().isEmpty())) {
             googleSheetsClient.batchUpdateAddressMatches(request.getSheetId(), request.getSheetName(), updates);
         }
 
         return summary;
+    }
+
+    private List<GoogleSheetAddressRow> readLocalCsv(String csvPath, AddressSyncSummary summary) {
+        List<GoogleSheetAddressRow> rows = new ArrayList<>();
+        try (BufferedReader br = new BufferedReader(new FileReader(csvPath))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+
+                // Simple parse assuming format: rowNumber,"address"
+                String[] parts = line.split(",", 2);
+                if (parts.length == 2) {
+                    try {
+                        int rowNum = Integer.parseInt(parts[0].trim());
+                        String addr = parts[1].trim();
+                        if (addr.startsWith("\"") && addr.endsWith("\"")) {
+                            addr = addr.substring(1, addr.length() - 1);
+                        }
+
+                        GoogleSheetAddressRow row = new GoogleSheetAddressRow();
+                        row.setRowNumber(rowNum);
+                        row.setAddress(addr);
+                        rows.add(row);
+                    } catch (NumberFormatException e) {
+                        // Skip header or malformed row
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to read CSV at path: {}", csvPath, e);
+            summary.getWarnings().add("Failed to load local CSV: " + e.getMessage());
+        }
+        return rows;
     }
 
     private String createFullNormalizedAddress(String address, String city, String state, String zip) {
