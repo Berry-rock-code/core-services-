@@ -123,16 +123,19 @@ public class BuildiumClientImpl implements BuildiumClient
 
         for (Map<String, Object> rental : allRentals) {
             BuildiumAddressRecord record = new BuildiumAddressRecord();
-            record.setBuildiumPropertyId((String) rental.get("Id"));
-            record.setBuildiumUnitId((String) rental.get("UnitId"));
+            record.setBuildiumPropertyId(String.valueOf(rental.get("Id")));
+            record.setBuildiumUnitId(rental.get("UnitId") != null ? String.valueOf(rental.get("UnitId")) : null);
 
-            // Map address fields. In real life Buildium API returns nested address object
-            Map<String, Object> addressMap = (Map<String, Object>) rental.get("Address");
-            if (addressMap != null) {
-                record.setRawAddress((String) addressMap.get("AddressLine1"));
-                record.setCity((String) addressMap.get("City"));
-                record.setState((String) addressMap.get("State"));
-                record.setPostalCode((String) addressMap.get("Zip"));
+            List<Map<String, Object>> currentTenants = (List<Map<String, Object>>) rental.get("CurrentTenants");
+            if (currentTenants != null && !currentTenants.isEmpty()) {
+                Map<String, Object> firstTenant = currentTenants.get(0);
+                Map<String, Object> addressMap = (Map<String, Object>) firstTenant.get("Address");
+                if (addressMap != null) {
+                    record.setRawAddress((String) addressMap.get("AddressLine1"));
+                    record.setCity((String) addressMap.get("City"));
+                    record.setState((String) addressMap.get("State"));
+                    record.setPostalCode((String) addressMap.get("PostalCode"));
+                }
             }
 
             records.add(record);

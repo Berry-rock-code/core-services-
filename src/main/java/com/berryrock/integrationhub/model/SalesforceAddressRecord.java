@@ -7,8 +7,10 @@ public class SalesforceAddressRecord {
     private String city;
     private String state;
     private String postalCode;
+    private String countryCode;
     private String normalizedAddress;
     private String sourceSystem;
+    private String quality;
 
     public SalesforceAddressRecord() {
     }
@@ -61,6 +63,14 @@ public class SalesforceAddressRecord {
         this.postalCode = postalCode;
     }
 
+    public String getCountryCode() {
+        return countryCode;
+    }
+
+    public void setCountryCode(String countryCode) {
+        this.countryCode = countryCode;
+    }
+
     public String getNormalizedAddress() {
         return normalizedAddress;
     }
@@ -75,5 +85,13 @@ public class SalesforceAddressRecord {
 
     public void setSourceSystem(String sourceSystem) {
         this.sourceSystem = sourceSystem;
+    }
+
+    public String getQuality() {
+        return quality;
+    }
+
+    public void setQuality(String quality) {
+        this.quality = quality;
     }
 }

@@ -46,8 +46,29 @@ integration:
       token-skew-seconds: ${SALESFORCE_TOKEN_SKEW_SECONDS:60}
       fields:
         id: ${SALESFORCE_FIELD_ID:Id}
-        full-address: ${SALESFORCE_FIELD_FULL_ADDRESS:New_Home_Address__c}
-        city: ${SALESFORCE_FIELD_CITY:}
-        state: ${SALESFORCE_FIELD_STATE:}
-        postal-code: ${SALESFORCE_FIELD_POSTAL_CODE:}
+        full-address: ${SALESFORCE_FIELD_FULL_ADDRESS:New_Purchase_Address__Street__s}
+        city: ${SALESFORCE_FIELD_CITY:New_Purchase_Address__City__s}
+        state: ${SALESFORCE_FIELD_STATE:New_Purchase_Address__StateCode__s}
+        postal-code: ${SALESFORCE_FIELD_POSTAL_CODE:New_Purchase_Address__PostalCode__s}
+        country-code: ${SALESFORCE_FIELD_COUNTRY_CODE:New_Purchase_Address__CountryCode__s}
         stage: ${SALESFORCE_FIELD_STAGE:StageName}
+
+address:
+  pipeline:
+    enabled: ${ADDRESS_PIPELINE_ENABLED:false}
+    dry-run: ${ADDRESS_PIPELINE_DRY_RUN:true}
+    sheet-id: ${ADDRESS_PIPELINE_SHEET_ID:}
+    sheet-name: ${ADDRESS_PIPELINE_SHEET_NAME:Loan Tape}
+    header-row: ${ADDRESS_PIPELINE_HEADER_ROW:2}
+    header:
+      address: ${ADDRESS_PIPELINE_HEADER_ADDRESS:Address}
+      city: ${ADDRESS_PIPELINE_HEADER_CITY:City}
+      state: ${ADDRESS_PIPELINE_HEADER_STATE:State}
+      postal-code: ${ADDRESS_PIPELINE_HEADER_POSTAL_CODE:Zip}
+      salesforce-id: ${ADDRESS_PIPELINE_HEADER_SALESFORCE_ID:Salesforce ID}
+      buildium-id: ${ADDRESS_PIPELINE_HEADER_BUILDIUM_ID:Buildium ID}
+      sf-standardized-address: ${ADDRESS_PIPELINE_HEADER_SF_STANDARDIZED_ADDRESS:SF Standardized Address}
+      sf-address-quality: ${ADDRESS_PIPELINE_HEADER_SF_ADDRESS_QUALITY:SF Address Quality}
+      sf-address-sync-status: ${ADDRESS_PIPELINE_HEADER_SF_ADDRESS_SYNC_STATUS:SF Address Sync Status}
+      buildium-lease-id: ${ADDRESS_PIPELINE_HEADER_BUILDIUM_LEASE_ID:Buildium lease ID}
+      buildium-property-id: ${ADDRESS_PIPELINE_HEADER_BUILDIUM_PROPERTY_ID:Buildium Property ID}

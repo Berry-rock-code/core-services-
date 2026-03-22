@@ -123,7 +123,11 @@ public class AddressSyncService {
                 }
 
                 if (request.isSyncGoogleSheet() && !request.isDryRun()) {
-                    updates.add(new SheetBatchUpdateRequest(gs.getRowNumber(), sf.getOpportunityId(), buildiumId));
+                    SheetBatchUpdateRequest req = new SheetBatchUpdateRequest();
+                    req.setRowNumber(gs.getRowNumber());
+                    req.setSalesforceId(sf.getOpportunityId());
+                    req.setBuildiumId(buildiumId);
+                    updates.add(req);
                 }
             } else {
                 unmatchedCount++;

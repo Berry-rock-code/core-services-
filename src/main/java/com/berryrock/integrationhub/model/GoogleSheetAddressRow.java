@@ -9,6 +9,11 @@ public class GoogleSheetAddressRow {
     private String salesforceId;
     private String buildiumId;
     private String normalizedAddress;
+    private String sfStandardizedAddress;
+    private String sfAddressQuality;
+    private String sfAddressSyncStatus;
+    private String buildiumLeaseId;
+    private String buildiumPropertyId;
 
     public GoogleSheetAddressRow() {
     }
@@ -75,5 +80,45 @@ public class GoogleSheetAddressRow {
 
     public void setNormalizedAddress(String normalizedAddress) {
         this.normalizedAddress = normalizedAddress;
+    }
+
+    public String getSfStandardizedAddress() {
+        return sfStandardizedAddress;
+    }
+
+    public void setSfStandardizedAddress(String sfStandardizedAddress) {
+        this.sfStandardizedAddress = sfStandardizedAddress;
+    }
+
+    public String getSfAddressQuality() {
+        return sfAddressQuality;
+    }
+
+    public void setSfAddressQuality(String sfAddressQuality) {
+        this.sfAddressQuality = sfAddressQuality;
+    }
+
+    public String getSfAddressSyncStatus() {
+        return sfAddressSyncStatus;
+    }
+
+    public void setSfAddressSyncStatus(String sfAddressSyncStatus) {
+        this.sfAddressSyncStatus = sfAddressSyncStatus;
+    }
+
+    public String getBuildiumLeaseId() {
+        return buildiumLeaseId;
+    }
+
+    public void setBuildiumLeaseId(String buildiumLeaseId) {
+        this.buildiumLeaseId = buildiumLeaseId;
+    }
+
+    public String getBuildiumPropertyId() {
+        return buildiumPropertyId;
+    }
+
+    public void setBuildiumPropertyId(String buildiumPropertyId) {
+        this.buildiumPropertyId = buildiumPropertyId;
     }
 }
