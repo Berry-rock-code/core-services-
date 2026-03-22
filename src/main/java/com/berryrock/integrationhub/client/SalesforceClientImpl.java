@@ -7,11 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -23,14 +19,11 @@ import java.security.KeyFactory;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Component
-public class SalesforceClientImpl implements SalesforceClient {
+public class SalesforceClientImpl implements SalesforceClient
+{
     private static final Logger log = LoggerFactory.getLogger(SalesforceClientImpl.class);
 
     @Value("${integration.vendor.salesforce.enabled:false}")
@@ -51,57 +44,66 @@ public class SalesforceClientImpl implements SalesforceClient {
     @Value("${integration.vendor.salesforce.private-key-path:}")
     private String privateKeyPath;
 
-    @Value("${integration.vendor.salesforce.token-skew-seconds:60}")
-    private int tokenSkewSeconds;
+    @Value("${integration.vendor.salesforce.fields.id:Id}")
+    private String idField;
+
+    @Value("${integration.vendor.salesforce.fields.full-address:New_Home_Address__c}")
+    private String fullAddressField;
+
+    @Value("${integration.vendor.salesforce.fields.city:}")
+    private String cityField;
+
+    @Value("${integration.vendor.salesforce.fields.state:}")
+    private String stateField;
+
+    @Value("${integration.vendor.salesforce.fields.postal-code:}")
+    private String postalCodeField;
+
+    @Value("${integration.vendor.salesforce.fields.stage:StageName}")
+    private String stageField;
 
     private final RestTemplate restTemplate;
 
-    public SalesforceClientImpl() {
+    public SalesforceClientImpl()
+    {
         this.restTemplate = new RestTemplate();
     }
 
     @Override
-    public boolean isConfigured() {
-        log.debug("Checking Salesforce configuration status");
+    public boolean isConfigured()
+    {
         return enabled;
     }
 
-    private static class SalesforceAuthResponse {
+    private static class SalesforceAuthResponse
+    {
         private final String accessToken;
         private final String instanceUrl;
 
-        public SalesforceAuthResponse(String accessToken, String instanceUrl) {
+        public SalesforceAuthResponse(String accessToken, String instanceUrl)
+        {
             this.accessToken = accessToken;
             this.instanceUrl = instanceUrl;
         }
 
-        public String getAccessToken() {
+        public String getAccessToken()
+        {
             return accessToken;
         }
 
-        public String getInstanceUrl() {
+        public String getInstanceUrl()
+        {
             return instanceUrl;
         }
     }
 
-    private SalesforceAuthResponse authenticate() {
-        if (clientId == null || clientId.isEmpty()) {
-            throw new IllegalStateException("Salesforce client-id is missing from configuration");
-        }
-        if (username == null || username.isEmpty()) {
-            throw new IllegalStateException("Salesforce username is missing from configuration");
-        }
-        if (privateKeyPath == null || privateKeyPath.isEmpty()) {
-            throw new IllegalStateException("Salesforce private-key-path is missing from configuration");
-        }
-
-        log.info("Initiating Salesforce JWT Bearer token flow for user: {}", username);
-
-        try {
-            // Load Private Key
+    private SalesforceAuthResponse authenticate()
+    {
+        try
+        {
             String keyContent = new String(Files.readAllBytes(Paths.get(privateKeyPath)))
-                    .replaceAll("-----BEGIN PRIVATE KEY-----", "")
-                    .replaceAll("-----END PRIVATE KEY-----", "")
+                    .replace("-----BEGIN PRIVATE KEY-----", "")
+                    .replace("-----END PRIVATE KEY-----", "")
                     .replaceAll("\\s+", "");
 
             byte[] keyBytes = Base64.getDecoder().decode(keyContent);
@@ -116,10 +118,9 @@ public class SalesforceClientImpl implements SalesforceClient {
                     .withIssuer(clientId)
                     .withSubject(username)
                     .withAudience(loginUrl)
-                    .withExpiresAt(Date.from(now.plusSeconds(180))) // Give it a generous 3 min expiry window for transit
+                    .withExpiresAt(Date.from(now.plusSeconds(180)))
                     .sign(algorithm);
 
-            // Make request for token
             String tokenUrl = loginUrl + "/services/oauth2/token";
 
             HttpHeaders headers = new HttpHeaders();
@@ -139,50 +140,63 @@ public class SalesforceClientImpl implements SalesforceClient {
             );
 
             Map<String, Object> respBody = response.getBody();
-            if (respBody == null || !respBody.containsKey("access_token") || !respBody.containsKey("instance_url")) {
-                throw new IllegalStateException("Token response was missing required fields. Body keys: " + (respBody != null ? respBody.keySet() : "null"));
+            if (respBody == null)
+            {
+                throw new IllegalStateException("Token response body was null");
             }
 
-            return new SalesforceAuthResponse(
-                    (String) respBody.get("access_token"),
-                    (String) respBody.get("instance_url")
-            );
+            String accessToken = (String) respBody.get("access_token");
+            String instanceUrl = (String) respBody.get("instance_url");
 
-        } catch (Exception e) {
+            if (accessToken == null || instanceUrl == null)
+            {
+                throw new IllegalStateException("Token response missing access_token or instance_url");
+            }
+
+            return new SalesforceAuthResponse(accessToken, instanceUrl);
+        }
+        catch (Exception e)
+        {
             log.error("Salesforce JWT authentication failed: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to authenticate with Salesforce", e);
         }
     }
 
     @Override
-    public List<SalesforceAddressRecord> fetchAddressesForGoogleSheetBuildiumSync() {
-        if (!enabled) {
+    public List<SalesforceAddressRecord> fetchAddressesForGoogleSheetBuildiumSync()
+    {
+        if (!enabled)
+        {
             log.warn("Salesforce integration is disabled. Returning empty list.");
             return new ArrayList<>();
         }
 
-        log.info("Fetching Salesforce records for sync");
+        SalesforceAuthResponse auth = authenticate();
+        String instanceUrl = auth.getInstanceUrl();
 
-        SalesforceAuthResponse authResponse;
-        try {
-            authResponse = authenticate();
-        } catch (Exception e) {
-            // The actual real cause is already logged in authenticate(), but we capture it here to abort the sync.
-            log.error("Aborting Salesforce sync due to authentication failure. Cause: {}", e.getMessage());
-            return new ArrayList<>();
-        }
+        List<String> fieldList = new ArrayList<>();
+        fieldList.add(idField);
 
-        String instanceUrl = authResponse.getInstanceUrl();
-        log.info("Salesforce Query Host (instance_url): {}", instanceUrl);
+        if (!isBlank(fullAddressField)) fieldList.add(fullAddressField);
+        if (!isBlank(cityField)) fieldList.add(cityField);
+        if (!isBlank(stateField)) fieldList.add(stateField);
+        if (!isBlank(postalCodeField)) fieldList.add(postalCodeField);
 
-        String soql = "SELECT Id, Property_Address__c, Property_City__c, Property_State__c, Property_Zip__c FROM Opportunity WHERE StageName = 'Closed Won'";
+        String soql = "SELECT " + String.join(", ", fieldList)
+                + " FROM Opportunity"
+                + " WHERE " + stageField + " = 'Closed Won'";
+
         String queryUrl = instanceUrl + "/services/data/" + apiVersion + "/query?q={soql}";
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(authResponse.getAccessToken());
+        headers.setBearerAuth(auth.getAccessToken());
         HttpEntity<?> entity = new HttpEntity<>(headers);
 
-        try {
+        try
+        {
+            log.info("Salesforce Query Host (instance_url): {}", instanceUrl);
+            log.info("Salesforce SOQL: {}", soql);
+
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                     queryUrl,
                     HttpMethod.GET,
@@ -192,31 +206,57 @@ public class SalesforceClientImpl implements SalesforceClient {
             );
 
             return parseSalesforceResponse(response.getBody());
-        } catch (Exception e) {
-            log.error("Failed to fetch from Salesforce using host {}: {}", instanceUrl, e.getMessage());
+        }
+        catch (Exception e)
+        {
+            log.error("Failed to fetch from Salesforce using host {}: {}", instanceUrl, e.getMessage(), e);
             return new ArrayList<>();
         }
     }
 
     @SuppressWarnings("unchecked")
-    private List<SalesforceAddressRecord> parseSalesforceResponse(Map<String, Object> body) {
+    private List<SalesforceAddressRecord> parseSalesforceResponse(Map<String, Object> body)
+    {
         List<SalesforceAddressRecord> records = new ArrayList<>();
-        if (body == null || !body.containsKey("records")) {
+
+        if (body == null || !body.containsKey("records"))
+        {
             return records;
         }
 
         List<Map<String, Object>> sfRecords = (List<Map<String, Object>>) body.get("records");
-        for (Map<String, Object> record : sfRecords) {
+
+        for (Map<String, Object> record : sfRecords)
+        {
             SalesforceAddressRecord sf = new SalesforceAddressRecord();
-            sf.setOpportunityId((String) record.get("Id"));
-            sf.setRawAddress((String) record.get("Property_Address__c"));
-            sf.setAddressLine((String) record.get("Property_Address__c"));
-            sf.setCity((String) record.get("Property_City__c"));
-            sf.setState((String) record.get("Property_State__c"));
-            sf.setPostalCode((String) record.get("Property_Zip__c"));
+
+            sf.setOpportunityId(asString(record.get(idField)));
+
+            String fullAddress = asString(record.get(fullAddressField));
+            String city = isBlank(cityField) ? null : asString(record.get(cityField));
+            String state = isBlank(stateField) ? null : asString(record.get(stateField));
+            String postalCode = isBlank(postalCodeField) ? null : asString(record.get(postalCodeField));
+
+            sf.setRawAddress(fullAddress);
+            sf.setAddressLine(fullAddress);
+            sf.setCity(city);
+            sf.setState(state);
+            sf.setPostalCode(postalCode);
             sf.setSourceSystem("Salesforce");
+
             records.add(sf);
         }
+
         return records;
+    }
+
+    private boolean isBlank(String value)
+    {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private String asString(Object value)
+    {
+        return value == null ? null : String.valueOf(value);
     }
 }
