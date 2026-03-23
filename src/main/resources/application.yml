@@ -22,32 +22,53 @@ management:
 integration:
   vendor:
     buildium:
-      enabled: ${BUILDIUM_ENABLED:true}
+      enabled: true
       base-url: ${BUILDIUM_BASE_URL:https://api.buildium.com}
       client-id: ${BUILDIUM_CLIENT_ID:}
       client-secret: ${BUILDIUM_CLIENT_SECRET:}
       connect-timeout-seconds: ${BUILDIUM_CONNECT_TIMEOUT_SECONDS:10}
       read-timeout-seconds: ${BUILDIUM_READ_TIMEOUT_SECONDS:30}
-      page-size: ${BUILDIUM_PAGE_SIZE:100}
+      page-size: 100
 
     google-sheets:
-      enabled: ${GOOGLE_SHEETS_ENABLED:true}
+      enabled: true
       application-name: ${GOOGLE_SHEETS_APPLICATION_NAME:integration-hub}
-      spreadsheet-id: ${GOOGLE_SHEETS_SPREADSHEET_ID:}
+      spreadsheet-id: 1xrObpEEGUjIxUVTtNrNU3a3KS79wN7xZURm1_2hpQh0
       credentials-path: ${GOOGLE_APPLICATION_CREDENTIALS:}
 
     salesforce:
-      enabled: ${SALESFORCE_ENABLED:false}
-      login-url: ${SALESFORCE_LOGIN_URL:https://login.salesforce.com}
+      enabled: true
+      login-url: https://login.salesforce.com
       client-id: ${SALESFORCE_CLIENT_ID:}
       username: ${SALESFORCE_USERNAME:}
       private-key-path: ${SALESFORCE_PRIVATE_KEY_PATH:}
-      api-version: ${SALESFORCE_API_VERSION:v61.0}
+      api-version: v61.0
       token-skew-seconds: ${SALESFORCE_TOKEN_SKEW_SECONDS:60}
       fields:
-        id: ${SALESFORCE_FIELD_ID:Id}
-        full-address: ${SALESFORCE_FIELD_FULL_ADDRESS:New_Home_Address__c}
-        city: ${SALESFORCE_FIELD_CITY:}
-        state: ${SALESFORCE_FIELD_STATE:}
-        postal-code: ${SALESFORCE_FIELD_POSTAL_CODE:}
-        stage: ${SALESFORCE_FIELD_STAGE:StageName}
+        id: Id
+        full-address: New_Purchase_Address__Street__s
+        city: New_Purchase_Address__City__s
+        state: New_Purchase_Address__StateCode__s
+        postal-code: New_Purchase_Address__PostalCode__s
+        country-code: New_Purchase_Address__CountryCode__s
+        stage: StageName
+
+address:
+  pipeline:
+    enabled: true
+    dry-run: true
+    sheet-id: 1xrObpEEGUjIxUVTtNrNU3a3KS79wN7xZURm1_2hpQh0
+    sheet-name: Copy of LeaseOption Properties
+    header-row: 2
+    header:
+      address: Address
+      city: City
+      state: State
+      postal-code: Zip
+      salesforce-id: Salesforce ID
+      buildium-id: Buildium ID
+      sf-standardized-address: SF Standardized Address
+      sf-address-quality: SF Address Quality
+      sf-address-sync-status: SF Address Sync Status
+      buildium-lease-id: Buildium lease ID
+      buildium-property-id: Buildium Property ID

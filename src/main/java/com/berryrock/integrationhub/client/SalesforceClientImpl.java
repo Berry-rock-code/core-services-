@@ -59,6 +59,9 @@ public class SalesforceClientImpl implements SalesforceClient
     @Value("${integration.vendor.salesforce.fields.postal-code:}")
     private String postalCodeField;
 
+    @Value("${integration.vendor.salesforce.fields.country-code:}")
+    private String countryCodeField;
+
     @Value("${integration.vendor.salesforce.fields.stage:StageName}")
     private String stageField;
 
@@ -181,6 +184,7 @@ public class SalesforceClientImpl implements SalesforceClient
         if (!isBlank(cityField)) fieldList.add(cityField);
         if (!isBlank(stateField)) fieldList.add(stateField);
         if (!isBlank(postalCodeField)) fieldList.add(postalCodeField);
+        if (!isBlank(countryCodeField)) fieldList.add(countryCodeField);
 
         String soql = "SELECT " + String.join(", ", fieldList)
                 + " FROM Opportunity"
@@ -192,25 +196,50 @@ public class SalesforceClientImpl implements SalesforceClient
         headers.setBearerAuth(auth.getAccessToken());
         HttpEntity<?> entity = new HttpEntity<>(headers);
 
+        List<SalesforceAddressRecord> allRecords = new ArrayList<>();
+        String nextRecordsUrl = queryUrl;
+        boolean isNext = false;
+
         try
         {
             log.info("Salesforce Query Host (instance_url): {}", instanceUrl);
             log.info("Salesforce SOQL: {}", soql);
 
-            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                    queryUrl,
-                    HttpMethod.GET,
-                    entity,
-                    new ParameterizedTypeReference<Map<String, Object>>() {},
-                    soql
-            );
+            while (nextRecordsUrl != null) {
+                ResponseEntity<Map<String, Object>> response;
+                if (isNext) {
+                    response = restTemplate.exchange(
+                            instanceUrl + nextRecordsUrl,
+                            HttpMethod.GET,
+                            entity,
+                            new ParameterizedTypeReference<Map<String, Object>>() {}
+                    );
+                } else {
+                    response = restTemplate.exchange(
+                            queryUrl,
+                            HttpMethod.GET,
+                            entity,
+                            new ParameterizedTypeReference<Map<String, Object>>() {},
+                            soql
+                    );
+                }
 
-            return parseSalesforceResponse(response.getBody());
+                Map<String, Object> body = response.getBody();
+                if (body != null) {
+                    allRecords.addAll(parseSalesforceResponse(body));
+                    nextRecordsUrl = (String) body.get("nextRecordsUrl");
+                    isNext = true;
+                } else {
+                    nextRecordsUrl = null;
+                }
+            }
+
+            return allRecords;
         }
         catch (Exception e)
         {
             log.error("Failed to fetch from Salesforce using host {}: {}", instanceUrl, e.getMessage(), e);
-            return new ArrayList<>();
+            return allRecords;
         }
     }
 
@@ -236,12 +265,20 @@ public class SalesforceClientImpl implements SalesforceClient
             String city = isBlank(cityField) ? null : asString(record.get(cityField));
             String state = isBlank(stateField) ? null : asString(record.get(stateField));
             String postalCode = isBlank(postalCodeField) ? null : asString(record.get(postalCodeField));
+            String countryCode = isBlank(countryCodeField) ? null : asString(record.get(countryCodeField));
 
-            sf.setRawAddress(fullAddress);
+            StringBuilder raw = new StringBuilder();
+            if (fullAddress != null) raw.append(fullAddress);
+            if (city != null) { if (raw.length() > 0) raw.append(", "); raw.append(city); }
+            if (state != null) { if (raw.length() > 0) raw.append(", "); raw.append(state); }
+            if (postalCode != null) { if (raw.length() > 0) raw.append(" "); raw.append(postalCode); }
+
+            sf.setRawAddress(raw.toString());
             sf.setAddressLine(fullAddress);
             sf.setCity(city);
             sf.setState(state);
             sf.setPostalCode(postalCode);
+            sf.setCountryCode(countryCode);
             sf.setSourceSystem("Salesforce");
 
             records.add(sf);
