@@ -105,37 +105,130 @@ public class BuildiumClientImpl implements BuildiumClient
         return allRows;
     }
 
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> extractBestAddress(Map<String, Object> rental)
+    {
+        Object directAddressObj = rental.get("Address");
+        if (directAddressObj instanceof Map<?, ?> directAddressRaw)
+        {
+            return (Map<String, Object>) directAddressRaw;
+        }
+
+        Object currentTenantsObj = rental.get("CurrentTenants");
+        if (currentTenantsObj instanceof List<?> currentTenants)
+        {
+            for (Object tenantObj : currentTenants)
+            {
+                if (!(tenantObj instanceof Map<?, ?> tenantMapRaw))
+                {
+                    continue;
+                }
+
+                Map<String, Object> tenantMap = (Map<String, Object>) tenantMapRaw;
+
+                Object addressObj = tenantMap.get("Address");
+                if (addressObj instanceof Map<?, ?> addressMapRaw)
+                {
+                    return (Map<String, Object>) addressMapRaw;
+                }
+
+                Object mailingAddressObj = tenantMap.get("MailingAddress");
+                if (mailingAddressObj instanceof Map<?, ?> mailingMapRaw)
+                {
+                    return (Map<String, Object>) mailingMapRaw;
+                }
+
+                Object tenantAddressObj = tenantMap.get("TenantAddress");
+                if (tenantAddressObj instanceof Map<?, ?> tenantAddressMapRaw)
+                {
+                    return (Map<String, Object>) tenantAddressMapRaw;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private String asString(Object value)
+    {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private String firstNonBlank(String... values)
+    {
+        if (values == null)
+        {
+            return null;
+        }
+
+        for (String value : values)
+        {
+            if (value != null && !value.trim().isEmpty())
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
     @Override
-    public List<BuildiumAddressRecord> fetchActiveLeaseAddresses() {
-        if (!properties.isEnabled()) {
+    @SuppressWarnings("unchecked")
+    public List<BuildiumAddressRecord> fetchActiveLeaseAddresses()
+    {
+        if (!properties.isEnabled())
+        {
             return new ArrayList<>();
         }
 
-        org.slf4j.LoggerFactory.getLogger(BuildiumClientImpl.class).info("Fetching active lease addresses from Buildium using pagination");
+        org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BuildiumClientImpl.class);
+        log.info("Fetching active lease addresses from Buildium using pagination");
 
-        // The requirement: The Buildium implementation must loop through pages until exhausted,
-        // using the configured page size from application.yml.
-
-        // This is handled efficiently by calling the existing getAllRentals() which uses pagination loop!
         List<Map<String, Object>> allRentals = getAllRentals();
-
         List<BuildiumAddressRecord> records = new ArrayList<>();
 
-        for (Map<String, Object> rental : allRentals) {
-            BuildiumAddressRecord record = new BuildiumAddressRecord();
-            record.setBuildiumPropertyId(String.valueOf(rental.get("Id")));
-            record.setBuildiumUnitId(rental.get("UnitId") != null ? String.valueOf(rental.get("UnitId")) : null);
+        if (!allRentals.isEmpty())
+        {
+            Map<String, Object> sample = allRentals.get(0);
+            log.info("Sample Buildium rental keys: {}", sample.keySet());
+            log.info("Sample Buildium rental payload: {}", sample);
+        }
 
-            List<Map<String, Object>> currentTenants = (List<Map<String, Object>>) rental.get("CurrentTenants");
-            if (currentTenants != null && !currentTenants.isEmpty()) {
-                Map<String, Object> firstTenant = currentTenants.get(0);
-                Map<String, Object> addressMap = (Map<String, Object>) firstTenant.get("Address");
-                if (addressMap != null) {
-                    record.setRawAddress((String) addressMap.get("AddressLine1"));
-                    record.setCity((String) addressMap.get("City"));
-                    record.setState((String) addressMap.get("State"));
-                    record.setPostalCode((String) addressMap.get("PostalCode"));
-                }
+        for (Map<String, Object> rental : allRentals)
+        {
+            BuildiumAddressRecord record = new BuildiumAddressRecord();
+
+            record.setBuildiumPropertyId(asString(rental.get("Id")));
+            record.setBuildiumUnitId(asString(rental.get("UnitId")));
+
+            Map<String, Object> addressMap = extractBestAddress(rental);
+
+            if (addressMap != null)
+            {
+                record.setRawAddress(firstNonBlank(
+                        asString(addressMap.get("AddressLine1")),
+                        asString(addressMap.get("Street")),
+                        asString(addressMap.get("Address1")),
+                        asString(addressMap.get("Line1"))
+                ));
+
+                record.setCity(firstNonBlank(
+                        asString(addressMap.get("City")),
+                        asString(addressMap.get("city"))
+                ));
+
+                record.setState(firstNonBlank(
+                        asString(addressMap.get("State")),
+                        asString(addressMap.get("StateCode")),
+                        asString(addressMap.get("state"))
+                ));
+
+                record.setPostalCode(firstNonBlank(
+                        asString(addressMap.get("PostalCode")),
+                        asString(addressMap.get("Zip")),
+                        asString(addressMap.get("ZipCode")),
+                        asString(addressMap.get("postalCode"))
+                ));
             }
 
             records.add(record);

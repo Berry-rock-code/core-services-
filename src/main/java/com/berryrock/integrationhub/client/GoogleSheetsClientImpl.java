@@ -44,6 +44,17 @@ public class GoogleSheetsClientImpl implements GoogleSheetsClient {
         this.pipelineProperties = pipelineProperties;
     }
 
+    private String toSheetRef(String sheetName)
+    {
+        if (sheetName == null || sheetName.trim().isEmpty())
+        {
+            throw new IllegalArgumentException("sheetName cannot be blank");
+        }
+
+        String escaped = sheetName.replace("'", "''");
+        return "'" + escaped + "'";
+    }
+
     private Sheets getSheetsService() throws Exception {
         GoogleCredentials credentials;
         if (credentialsPath != null && !credentialsPath.isEmpty() && !credentialsPath.contains("application.yml")) {
@@ -95,7 +106,8 @@ public class GoogleSheetsClientImpl implements GoogleSheetsClient {
 
         try {
             Sheets service = getSheetsService();
-            String range = sheetName + "!A:Z";
+            String safeSheetName = toSheetRef(sheetName);
+            String range = safeSheetName + "!A:Z";
             ValueRange response = service.spreadsheets().values().get(sheetId, range).execute();
             List<List<Object>> values = response.getValues();
 
@@ -174,7 +186,8 @@ public class GoogleSheetsClientImpl implements GoogleSheetsClient {
 
             int headerRowIndex = pipelineProperties.getHeaderRow();
             // Need headers to know which columns to update
-            String headerRange = sheetName + "!" + headerRowIndex + ":" + headerRowIndex;
+            String safeSheetName = toSheetRef(sheetName);
+            String headerRange = safeSheetName + "!" + headerRowIndex + ":" + headerRowIndex;
             ValueRange headerResponse = service.spreadsheets().values().get(sheetId, headerRange).execute();
             List<List<Object>> headerValues = headerResponse.getValues();
 
@@ -215,15 +228,18 @@ public class GoogleSheetsClientImpl implements GoogleSheetsClient {
         }
     }
 
-    private void addUpdateIfHeaderExists(List<ValueRange> data, String sheetName, int rowNumber, Map<String, Integer> headerMap, String header, String value) {
-        if (header != null && headerMap.containsKey(header) && value != null) {
+    private void addUpdateIfHeaderExists(List<ValueRange> data, String sheetName, int rowNumber, Map<String, Integer> headerMap, String header, String value)
+    {
+        if (header != null && headerMap.containsKey(header) && value != null)
+        {
             int colIndex = headerMap.get(header);
             String colLetter = getColumnLetter(colIndex);
-            String range = sheetName + "!" + colLetter + rowNumber;
+            String safeSheetName = toSheetRef(sheetName);
+            String range = safeSheetName + "!" + colLetter + rowNumber;
 
             ValueRange vr = new ValueRange()
-                .setRange(range)
-                .setValues(Collections.singletonList(Collections.singletonList(value)));
+                    .setRange(range)
+                    .setValues(Collections.singletonList(Collections.singletonList(value)));
             data.add(vr);
         }
     }

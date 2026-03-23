@@ -1,1 +1,16 @@
 target/
+
+# local spring config
+src/main/resources/application-local.yml
+
+# local env / secrets
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.jks
+
+# specific credential files
+*service-account*.json
+*credentials*.json

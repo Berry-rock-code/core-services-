@@ -3,10 +3,14 @@ package com.berryrock.integrationhub.service;
 import org.springframework.stereotype.Service;
 
 @Service
-public class AddressNormalizationService {
-
-    public String normalize(String address) {
-        if (address == null) return "";
+public class AddressNormalizationService
+{
+    public String normalize(String address)
+    {
+        if (address == null)
+        {
+            return "";
+        }
 
         String normalized = address.toUpperCase();
 
@@ -15,6 +19,9 @@ public class AddressNormalizationService {
 
         // Collapse whitespace and trim
         normalized = normalized.replaceAll("\\s+", " ").trim();
+
+        // Normalize ZIP+4 to 5-digit ZIP
+        normalized = normalized.replaceAll("\\b(\\d{5})-\\d{4}\\b", "$1");
 
         // Standardize street suffixes
         normalized = replaceWord(normalized, "STREET", "ST");
@@ -28,6 +35,12 @@ public class AddressNormalizationService {
         normalized = replaceWord(normalized, "TERRACE", "TER");
         normalized = replaceWord(normalized, "PARKWAY", "PKWY");
         normalized = replaceWord(normalized, "CIRCLE", "CIR");
+
+        // Common city aliases
+        normalized = replaceWord(normalized, "OKLAHOMA CITY", "OKC");
+        normalized = replaceWord(normalized, "ST LOUIS", "STL");
+        normalized = replaceWord(normalized, "SAINT LOUIS", "STL");
+        normalized = replaceWord(normalized, "KANSAS CITY", "KC");
 
         // Standardize directionals
         normalized = replaceWord(normalized, "NORTHWEST", "NW");
@@ -47,24 +60,47 @@ public class AddressNormalizationService {
         return normalized.trim();
     }
 
-    public String buildNormalizedKey(String addressLine, String city, String state, String postalCode) {
+    public String buildNormalizedKey(String addressLine, String city, String state, String postalCode)
+    {
         StringBuilder sb = new StringBuilder();
-        if (addressLine != null) sb.append(normalize(addressLine)).append("|");
-        else sb.append("|");
 
-        if (city != null) sb.append(normalize(city)).append("|");
-        else sb.append("|");
+        if (addressLine != null)
+        {
+            sb.append(normalize(addressLine)).append("|");
+        }
+        else
+        {
+            sb.append("|");
+        }
 
-        if (state != null) sb.append(normalize(state)).append("|");
-        else sb.append("|");
+        if (city != null)
+        {
+            sb.append(normalize(city)).append("|");
+        }
+        else
+        {
+            sb.append("|");
+        }
 
-        if (postalCode != null) sb.append(normalize(postalCode));
+        if (state != null)
+        {
+            sb.append(normalize(state)).append("|");
+        }
+        else
+        {
+            sb.append("|");
+        }
+
+        if (postalCode != null)
+        {
+            sb.append(normalize(postalCode));
+        }
 
         return sb.toString();
     }
 
-    private String replaceWord(String text, String target, String replacement) {
-        // use word boundaries \b to ensure we only replace full words
+    private String replaceWord(String text, String target, String replacement)
+    {
         return text.replaceAll("\\b" + target + "\\b", replacement);
     }
 }
