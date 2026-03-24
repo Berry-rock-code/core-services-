@@ -8,6 +8,7 @@ public class BuildiumAddressRecord {
     private String state;
     private String postalCode;
     private String normalizedAddress;
+    private String buildiumLeaseId;
 
     public BuildiumAddressRecord() {
     }
@@ -66,5 +67,15 @@ public class BuildiumAddressRecord {
 
     public void setNormalizedAddress(String normalizedAddress) {
         this.normalizedAddress = normalizedAddress;
+    }
+
+    public String getBuildiumLeaseId()
+    {
+        return buildiumLeaseId;
+    }
+
+    public void setBuildiumLeaseId(String buildiumLeaseId)
+    {
+        this.buildiumLeaseId = buildiumLeaseId;
     }
 }
