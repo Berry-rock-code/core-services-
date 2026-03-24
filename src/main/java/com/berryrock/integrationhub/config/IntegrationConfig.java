@@ -5,7 +5,8 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 @EnableConfigurationProperties({
-        BuildiumProperties.class
+        BuildiumProperties.class,
+        AddressPipelineProperties.class
 })
 public class IntegrationConfig
 {

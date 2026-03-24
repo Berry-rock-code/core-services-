@@ -188,9 +188,12 @@ public class AddressSyncService
                     buildiumId = bdMap.get(addrOnlyKey).get(0).getBuildiumPropertyId();
                 }
 
-                if (request.isSyncGoogleSheet() && !request.isDryRun())
-                {
-                    updates.add(new SheetBatchUpdateRequest(gs.getRowNumber(), sf.getOpportunityId(), buildiumId));
+                if (request.isSyncGoogleSheet() && !request.isDryRun()) {
+                    SheetBatchUpdateRequest req = new SheetBatchUpdateRequest();
+                    req.setRowNumber(gs.getRowNumber());
+                    req.setSalesforceId(sf.getOpportunityId());
+                    req.setBuildiumId(buildiumId);
+                    updates.add(req);
                 }
             }
             else

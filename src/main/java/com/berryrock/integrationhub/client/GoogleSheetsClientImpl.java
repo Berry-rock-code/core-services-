@@ -19,8 +19,11 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import com.berryrock.integrationhub.config.AddressPipelineProperties;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 @Component
 public class GoogleSheetsClientImpl implements GoogleSheetsClient {
@@ -34,6 +37,23 @@ public class GoogleSheetsClientImpl implements GoogleSheetsClient {
 
     @Value("${integration.vendor.google-sheets.credentials-path:}")
     private String credentialsPath;
+
+    private final AddressPipelineProperties pipelineProperties;
+
+    public GoogleSheetsClientImpl(AddressPipelineProperties pipelineProperties) {
+        this.pipelineProperties = pipelineProperties;
+    }
+
+    private String toSheetRef(String sheetName)
+    {
+        if (sheetName == null || sheetName.trim().isEmpty())
+        {
+            throw new IllegalArgumentException("sheetName cannot be blank");
+        }
+
+        String escaped = sheetName.replace("'", "''");
+        return "'" + escaped + "'";
+    }
 
     private Sheets getSheetsService() throws Exception {
         GoogleCredentials credentials;
@@ -86,7 +106,8 @@ public class GoogleSheetsClientImpl implements GoogleSheetsClient {
 
         try {
             Sheets service = getSheetsService();
-            String range = sheetName + "!A:Z";
+            String safeSheetName = toSheetRef(sheetName);
+            String range = safeSheetName + "!A:Z";
             ValueRange response = service.spreadsheets().values().get(sheetId, range).execute();
             List<List<Object>> values = response.getValues();
 
@@ -95,9 +116,21 @@ public class GoogleSheetsClientImpl implements GoogleSheetsClient {
                 return rows;
             }
 
+            Map<String, Integer> headerMap = new HashMap<>();
+
+            int headerRowIndex = pipelineProperties.getHeaderRow();
+
             int rowNum = 1;
             for (List<Object> row : values) {
-                if (rowNum == 1) { // Skip header row
+                if (rowNum < headerRowIndex) {
+                    rowNum++;
+                    continue;
+                }
+
+                if (rowNum == headerRowIndex) { // Process header row
+                    for (int i = 0; i < row.size(); i++) {
+                        headerMap.put(row.get(i).toString().trim(), i);
+                    }
                     rowNum++;
                     continue;
                 }
@@ -105,13 +138,18 @@ public class GoogleSheetsClientImpl implements GoogleSheetsClient {
                 GoogleSheetAddressRow gsRow = new GoogleSheetAddressRow();
                 gsRow.setRowNumber(rowNum);
 
-                // Assuming columns: A=Address, B=City, C=State, D=Zip, E=SalesforceId, F=BuildiumId
-                gsRow.setAddress(row.size() > 0 ? row.get(0).toString() : null);
-                gsRow.setCity(row.size() > 1 ? row.get(1).toString() : null);
-                gsRow.setState(row.size() > 2 ? row.get(2).toString() : null);
-                gsRow.setPostalCode(row.size() > 3 ? row.get(3).toString() : null);
-                gsRow.setSalesforceId(row.size() > 4 ? row.get(4).toString() : null);
-                gsRow.setBuildiumId(row.size() > 5 ? row.get(5).toString() : null);
+                AddressPipelineProperties.Header props = pipelineProperties.getHeader();
+                gsRow.setAddress(getColValue(row, headerMap, props.getAddress()));
+                gsRow.setCity(getColValue(row, headerMap, props.getCity()));
+                gsRow.setState(getColValue(row, headerMap, props.getState()));
+                gsRow.setPostalCode(getColValue(row, headerMap, props.getPostalCode()));
+                gsRow.setSalesforceId(getColValue(row, headerMap, props.getSalesforceId()));
+                gsRow.setBuildiumId(getColValue(row, headerMap, props.getBuildiumId()));
+                gsRow.setSfStandardizedAddress(getColValue(row, headerMap, props.getSfStandardizedAddress()));
+                gsRow.setSfAddressQuality(getColValue(row, headerMap, props.getSfAddressQuality()));
+                gsRow.setSfAddressSyncStatus(getColValue(row, headerMap, props.getSfAddressSyncStatus()));
+                gsRow.setBuildiumLeaseId(getColValue(row, headerMap, props.getBuildiumLeaseId()));
+                gsRow.setBuildiumPropertyId(getColValue(row, headerMap, props.getBuildiumPropertyId()));
 
                 rows.add(gsRow);
                 rowNum++;
@@ -119,11 +157,19 @@ public class GoogleSheetsClientImpl implements GoogleSheetsClient {
             log.info("Fetched and parsed {} rows from Google Sheets.", rows.size());
 
         } catch (Exception e) {
-            log.error("Failed to fetch Google Sheet rows: {}", e.getMessage());
+            log.error("Failed to fetch Google Sheet rows: {}", e.getMessage(), e);
             // It's acceptable to return empty on error given this is an integration context without actual creds.
         }
 
         return rows;
+    }
+
+    private String getColValue(List<Object> row, Map<String, Integer> headerMap, String headerName) {
+        if (headerName == null) return null;
+        Integer index = headerMap.get(headerName);
+        if (index == null || index >= row.size()) return null;
+        Object val = row.get(index);
+        return val == null ? null : val.toString();
     }
 
     @Override
@@ -137,22 +183,37 @@ public class GoogleSheetsClientImpl implements GoogleSheetsClient {
 
         try {
             Sheets service = getSheetsService();
+
+            int headerRowIndex = pipelineProperties.getHeaderRow();
+            // Need headers to know which columns to update
+            String safeSheetName = toSheetRef(sheetName);
+            String headerRange = safeSheetName + "!" + headerRowIndex + ":" + headerRowIndex;
+            ValueRange headerResponse = service.spreadsheets().values().get(sheetId, headerRange).execute();
+            List<List<Object>> headerValues = headerResponse.getValues();
+
+            if (headerValues == null || headerValues.isEmpty()) {
+                log.error("Failed to fetch headers for batch update");
+                return;
+            }
+
+            List<Object> headers = headerValues.get(0);
+            Map<String, Integer> headerMap = new HashMap<>();
+            for (int i = 0; i < headers.size(); i++) {
+                headerMap.put(headers.get(i).toString().trim(), i);
+            }
+
             List<ValueRange> data = new ArrayList<>();
+            AddressPipelineProperties.Header props = pipelineProperties.getHeader();
 
             for (SheetBatchUpdateRequest update : updates) {
-                // E.g. Column E is Salesforce ID, Column F is Buildium ID
-                String range = sheetName + "!E" + update.getRowNumber() + ":F" + update.getRowNumber();
-                List<Object> updateValues = Arrays.asList(
-                    update.getSalesforceId() != null ? update.getSalesforceId() : "",
-                    update.getBuildiumId() != null ? update.getBuildiumId() : ""
-                );
-
-                ValueRange vr = new ValueRange()
-                    .setRange(range)
-                    .setValues(Collections.singletonList(updateValues));
-                data.add(vr);
-
-                log.debug("Prepared Update Row {}: sfId={}, buildiumId={}", update.getRowNumber(), update.getSalesforceId(), update.getBuildiumId());
+                // Determine cells to update based on headerMap
+                addUpdateIfHeaderExists(data, sheetName, update.getRowNumber(), headerMap, props.getSalesforceId(), update.getSalesforceId());
+                addUpdateIfHeaderExists(data, sheetName, update.getRowNumber(), headerMap, props.getBuildiumId(), update.getBuildiumId());
+                addUpdateIfHeaderExists(data, sheetName, update.getRowNumber(), headerMap, props.getSfStandardizedAddress(), update.getSfStandardizedAddress());
+                addUpdateIfHeaderExists(data, sheetName, update.getRowNumber(), headerMap, props.getSfAddressQuality(), update.getSfAddressQuality());
+                addUpdateIfHeaderExists(data, sheetName, update.getRowNumber(), headerMap, props.getSfAddressSyncStatus(), update.getSfAddressSyncStatus());
+                addUpdateIfHeaderExists(data, sheetName, update.getRowNumber(), headerMap, props.getBuildiumLeaseId(), update.getBuildiumLeaseId());
+                addUpdateIfHeaderExists(data, sheetName, update.getRowNumber(), headerMap, props.getBuildiumPropertyId(), update.getBuildiumPropertyId());
             }
 
             if (!data.isEmpty()) {
@@ -160,10 +221,40 @@ public class GoogleSheetsClientImpl implements GoogleSheetsClient {
                     .setValueInputOption("USER_ENTERED")
                     .setData(data);
                 service.spreadsheets().values().batchUpdate(sheetId, batchBody).execute();
-                log.info("Successfully executed batch update for {} rows.", updates.size());
+                log.info("Successfully executed batch update for {} cells.", data.size());
             }
         } catch (Exception e) {
-            log.error("Failed to execute batch update for Google Sheets: {}", e.getMessage());
+            log.error("Failed to execute batch update for Google Sheets: {}", e.getMessage(), e);
         }
+    }
+
+    private void addUpdateIfHeaderExists(List<ValueRange> data, String sheetName, int rowNumber, Map<String, Integer> headerMap, String header, String value)
+    {
+        if (header != null && headerMap.containsKey(header) && value != null)
+        {
+            int colIndex = headerMap.get(header);
+            String colLetter = getColumnLetter(colIndex);
+            String safeSheetName = toSheetRef(sheetName);
+            String range = safeSheetName + "!" + colLetter + rowNumber;
+
+            ValueRange vr = new ValueRange()
+                    .setRange(range)
+                    .setValues(Collections.singletonList(Collections.singletonList(value)));
+            data.add(vr);
+        }
+    }
+
+    private String getColumnLetter(int columnNumber) {
+        StringBuilder columnName = new StringBuilder();
+        int dividend = columnNumber + 1;
+        int modulo;
+
+        while (dividend > 0) {
+            modulo = (dividend - 1) % 26;
+            columnName.insert(0, (char) (65 + modulo));
+            dividend = (dividend - modulo) / 26;
+        }
+
+        return columnName.toString();
     }
 }
