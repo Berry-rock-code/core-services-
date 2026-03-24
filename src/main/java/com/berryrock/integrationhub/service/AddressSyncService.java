@@ -12,6 +12,7 @@ import com.berryrock.integrationhub.model.SalesforceAddressRecord;
 import com.berryrock.integrationhub.model.SheetBatchUpdateRequest;
 import com.berryrock.integrationhub.util.AddressMatcher;
 import com.berryrock.integrationhub.util.AddressNormalizer;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -23,9 +24,11 @@ import java.util.List;
 import java.util.Map;
 
 @Service
-public class AddressSyncService {
-
+public class AddressSyncService
+{
     private static final Logger log = LoggerFactory.getLogger(AddressSyncService.class);
+
+    private enum AddressQuality { CLEAN, PARTIAL, SUSPICIOUS }
 
     private final SalesforceClient salesforceClient;
     private final GoogleSheetsClient googleSheetsClient;
@@ -39,7 +42,8 @@ public class AddressSyncService {
                               BuildiumClient buildiumClient,
                               AuditLogService auditLogService,
                               AddressNormalizer addressNormalizer,
-                              AddressMatcher addressMatcher) {
+                              AddressMatcher addressMatcher)
+    {
         this.salesforceClient = salesforceClient;
         this.googleSheetsClient = googleSheetsClient;
         this.buildiumClient = buildiumClient;
@@ -48,11 +52,13 @@ public class AddressSyncService {
         this.addressMatcher = addressMatcher;
     }
 
-    public AddressSyncSummary runSync(AddressSyncRequest request) {
+    public AddressSyncSummary runSync(AddressSyncRequest request)
+    {
         AddressSyncSummary summary = new AddressSyncSummary();
         summary.setStatus("SUCCESS");
 
-        if (request.isDryRun()) {
+        if (request.isDryRun())
+        {
             summary.getWarnings().add("Dry run enabled. No external systems were modified.");
         }
 
@@ -60,10 +66,13 @@ public class AddressSyncService {
         List<SalesforceAddressRecord> sfRecords = salesforceClient.fetchAddressesForGoogleSheetBuildiumSync();
         List<GoogleSheetAddressRow> gsRows;
 
-        if (request.getCsvPath() != null && !request.getCsvPath().isEmpty()) {
+        if (request.getCsvPath() != null && !request.getCsvPath().isEmpty())
+        {
             log.info("Loading local CSV test data from: {}", request.getCsvPath());
             gsRows = readLocalCsv(request.getCsvPath(), summary);
-        } else {
+        }
+        else
+        {
             gsRows = googleSheetsClient.fetchAddressRows(request.getSheetId(), request.getSheetName());
         }
 
@@ -86,53 +95,120 @@ public class AddressSyncService {
                 createFullNormalizedAddress(r.getRawAddress(), r.getCity(), r.getState(), r.getPostalCode())
         ));
 
-        // 3. Group / Index
-        Map<String, List<SalesforceAddressRecord>> sfMap = addressMatcher.groupRecordsByNormalizedAddress(sfRecords, SalesforceAddressRecord::getNormalizedAddress);
-        Map<String, List<GoogleSheetAddressRow>> gsMap = addressMatcher.groupRecordsByNormalizedAddress(gsRows, GoogleSheetAddressRow::getNormalizedAddress);
-        Map<String, List<BuildiumAddressRecord>> bdMap = addressMatcher.groupRecordsByNormalizedAddress(bdRecords, BuildiumAddressRecord::getNormalizedAddress);
+        // 3. Classify Salesforce records and retain only CLEAN ones for matching
+        List<SalesforceAddressRecord> cleanSfRecords = new ArrayList<>();
+        int partialCount = 0;
+        int suspiciousCount = 0;
+
+        for (SalesforceAddressRecord record : sfRecords)
+        {
+            AddressQuality quality = classifySalesforceAddress(record);
+            if (quality == AddressQuality.CLEAN)
+            {
+                cleanSfRecords.add(record);
+            }
+            else if (quality == AddressQuality.PARTIAL)
+            {
+                partialCount++;
+            }
+            else
+            {
+                suspiciousCount++;
+            }
+        }
+
+        if (partialCount > 0)
+        {
+            summary.getWarnings().add(partialCount + " Salesforce record(s) skipped due to PARTIAL address quality.");
+        }
+        if (suspiciousCount > 0)
+        {
+            summary.getWarnings().add(suspiciousCount + " Salesforce record(s) skipped due to SUSPICIOUS address quality.");
+        }
+
+        // 4. Group / Index
+        Map<String, List<SalesforceAddressRecord>> sfMap =
+                addressMatcher.groupRecordsByNormalizedAddress(cleanSfRecords, SalesforceAddressRecord::getNormalizedAddress);
+        Map<String, List<GoogleSheetAddressRow>> gsMap =
+                addressMatcher.groupRecordsByNormalizedAddress(gsRows, GoogleSheetAddressRow::getNormalizedAddress);
+        Map<String, List<BuildiumAddressRecord>> bdMap =
+                addressMatcher.groupRecordsByNormalizedAddress(bdRecords, BuildiumAddressRecord::getNormalizedAddress);
+
+        // Address-line-only index for fallback matching
+        Map<String, List<GoogleSheetAddressRow>> gsAddressOnlyMap =
+                addressMatcher.groupRecordsByNormalizedAddress(gsRows, r -> addressNormalizer.normalize(r.getAddress()));
 
         // Check for duplicates
         checkForDuplicates(sfMap, "Salesforce records", summary);
         checkForDuplicates(gsMap, "Google Sheet rows", summary);
         checkForDuplicates(bdMap, "Buildium records", summary);
 
-        // 4. Match
+        // 5. Match (two-pass: full key first, then address-line-only fallback)
         int sfToGsMatches = 0;
         int gsToBdMatches = 0;
         int unmatchedCount = 0;
+        int addressOnlyMatches = 0;
 
         List<SheetBatchUpdateRequest> updates = new ArrayList<>();
 
-        for (Map.Entry<String, List<SalesforceAddressRecord>> entry : sfMap.entrySet()) {
-            String normAddress = entry.getKey();
-            List<SalesforceAddressRecord> sfs = entry.getValue();
+        for (Map.Entry<String, List<SalesforceAddressRecord>> entry : sfMap.entrySet())
+        {
+            String fullKey = entry.getKey();
+            SalesforceAddressRecord sf = entry.getValue().get(0);
+            String addrOnlyKey = addressNormalizer.normalize(sf.getAddressLine());
 
-            // Just use the first one if there are duplicates
-            SalesforceAddressRecord sf = sfs.get(0);
-
-            if (gsMap.containsKey(normAddress)) {
-                List<GoogleSheetAddressRow> gss = gsMap.get(normAddress);
-                GoogleSheetAddressRow gs = gss.get(0); // Take first
-
-                // Only count the unique normalized address once
+            if (gsMap.containsKey(fullKey))
+            {
+                // Pass 1: full normalized key match (SYNCED)
+                GoogleSheetAddressRow gs = gsMap.get(fullKey).get(0);
                 sfToGsMatches++;
 
                 String buildiumId = null;
-                if (bdMap.containsKey(normAddress)) {
-                    buildiumId = bdMap.get(normAddress).get(0).getBuildiumPropertyId();
+                if (bdMap.containsKey(fullKey))
+                {
+                    buildiumId = bdMap.get(fullKey).get(0).getBuildiumPropertyId();
                 }
 
-                if (request.isSyncGoogleSheet() && !request.isDryRun()) {
+                if (request.isSyncGoogleSheet() && !request.isDryRun())
+                {
                     updates.add(new SheetBatchUpdateRequest(gs.getRowNumber(), sf.getOpportunityId(), buildiumId));
                 }
-            } else {
+            }
+            else if (addrOnlyKey != null && gsAddressOnlyMap.containsKey(addrOnlyKey))
+            {
+                // Pass 2: address-line-only fallback match (SYNCED_ADDRESS_ONLY)
+                GoogleSheetAddressRow gs = gsAddressOnlyMap.get(addrOnlyKey).get(0);
+                sfToGsMatches++;
+                addressOnlyMatches++;
+                log.debug("Address-only match (SYNCED_ADDRESS_ONLY) for SF opportunity {}: {}", sf.getOpportunityId(), addrOnlyKey);
+
+                String buildiumId = null;
+                if (bdMap.containsKey(addrOnlyKey))
+                {
+                    buildiumId = bdMap.get(addrOnlyKey).get(0).getBuildiumPropertyId();
+                }
+
+                if (request.isSyncGoogleSheet() && !request.isDryRun())
+                {
+                    updates.add(new SheetBatchUpdateRequest(gs.getRowNumber(), sf.getOpportunityId(), buildiumId));
+                }
+            }
+            else
+            {
                 unmatchedCount++;
             }
         }
 
-        // Count Sheets to Buildium Matches for the summary (unique normalized addresses)
-        for (String normAddress : gsMap.keySet()) {
-            if (bdMap.containsKey(normAddress)) {
+        if (addressOnlyMatches > 0)
+        {
+            summary.getWarnings().add(addressOnlyMatches + " record(s) matched on address line only (SYNCED_ADDRESS_ONLY).");
+        }
+
+        // Count Sheets to Buildium matches for the summary
+        for (String key : gsMap.keySet())
+        {
+            if (bdMap.containsKey(key))
+            {
                 gsToBdMatches++;
             }
         }
@@ -141,28 +217,52 @@ public class AddressSyncService {
         summary.setBuildiumMatches(gsToBdMatches);
         summary.setUnmatchedCount(unmatchedCount);
 
-        // 5. Write back
-        if (!updates.isEmpty() && (request.getCsvPath() == null || request.getCsvPath().isEmpty())) {
+        // 6. Write back
+        if (!updates.isEmpty() && (request.getCsvPath() == null || request.getCsvPath().isEmpty()))
+        {
             googleSheetsClient.batchUpdateAddressMatches(request.getSheetId(), request.getSheetName(), updates);
         }
 
         return summary;
     }
 
-    private List<GoogleSheetAddressRow> readLocalCsv(String csvPath, AddressSyncSummary summary) {
-        List<GoogleSheetAddressRow> rows = new ArrayList<>();
-        try (BufferedReader br = new BufferedReader(new FileReader(csvPath))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                if (line.trim().isEmpty()) continue;
+    private AddressQuality classifySalesforceAddress(SalesforceAddressRecord record)
+    {
+        if (StringUtils.isBlank(record.getAddressLine()))
+        {
+            return AddressQuality.SUSPICIOUS;
+        }
+        if (StringUtils.isBlank(record.getCity())
+                || StringUtils.isBlank(record.getState())
+                || StringUtils.isBlank(record.getPostalCode()))
+        {
+            return AddressQuality.PARTIAL;
+        }
+        return AddressQuality.CLEAN;
+    }
 
-                // Simple parse assuming format: rowNumber,"address"
+    private List<GoogleSheetAddressRow> readLocalCsv(String csvPath, AddressSyncSummary summary)
+    {
+        List<GoogleSheetAddressRow> rows = new ArrayList<>();
+        try (BufferedReader br = new BufferedReader(new FileReader(csvPath)))
+        {
+            String line;
+            while ((line = br.readLine()) != null)
+            {
+                if (line.trim().isEmpty())
+                {
+                    continue;
+                }
+
                 String[] parts = line.split(",", 2);
-                if (parts.length == 2) {
-                    try {
+                if (parts.length == 2)
+                {
+                    try
+                    {
                         int rowNum = Integer.parseInt(parts[0].trim());
                         String addr = parts[1].trim();
-                        if (addr.startsWith("\"") && addr.endsWith("\"")) {
+                        if (addr.startsWith("\"") && addr.endsWith("\""))
+                        {
                             addr = addr.substring(1, addr.length() - 1);
                         }
 
@@ -170,41 +270,45 @@ public class AddressSyncService {
                         row.setRowNumber(rowNum);
                         row.setAddress(addr);
                         rows.add(row);
-                    } catch (NumberFormatException e) {
+                    }
+                    catch (NumberFormatException e)
+                    {
                         // Skip header or malformed row
                     }
                 }
             }
-        } catch (Exception e) {
+        }
+        catch (Exception e)
+        {
             log.error("Failed to read CSV at path: {}", csvPath, e);
             summary.getWarnings().add("Failed to load local CSV: " + e.getMessage());
         }
         return rows;
     }
 
-    private String createFullNormalizedAddress(String address, String city, String state, String zip) {
+    private String createFullNormalizedAddress(String address, String city, String state, String zip)
+    {
         String normAddr = addressNormalizer.normalize(address);
         String normCity = addressNormalizer.normalizeCity(city);
-
-        StringBuilder sb = new StringBuilder();
-        if (normAddr != null) sb.append(normAddr);
-        if (normCity != null) sb.append(" ").append(normCity);
-        if (state != null) sb.append(" ").append(state.toUpperCase());
-        if (zip != null) sb.append(" ").append(zip);
-
-        return sb.toString().trim().replaceAll("\\s+", " ");
+        String normState = state != null ? state.toUpperCase() : null;
+        return addressNormalizer.buildComparableKey(normAddr, normCity, normState, zip);
     }
 
-    private <T> void checkForDuplicates(Map<String, List<T>> map, String source, AddressSyncSummary summary) {
-        for (Map.Entry<String, List<T>> entry : map.entrySet()) {
-            if (entry.getValue().size() > 1) {
-                summary.getWarnings().add(String.format("Duplicate %s found for normalized address: %s", source, entry.getKey()));
+    private <T> void checkForDuplicates(Map<String, List<T>> map, String source, AddressSyncSummary summary)
+    {
+        for (Map.Entry<String, List<T>> entry : map.entrySet())
+        {
+            if (entry.getValue().size() > 1)
+            {
+                summary.getWarnings().add(
+                        String.format("Duplicate %s found for normalized address: %s", source, entry.getKey())
+                );
             }
         }
     }
 
-    // For older tests that might call run(request) instead of runSync
-    public AddressSyncSummary run(AddressSyncRequest request) {
+    public AddressSyncSummary run(AddressSyncRequest request)
+    {
         return runSync(request);
     }
 }

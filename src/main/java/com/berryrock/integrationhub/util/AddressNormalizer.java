@@ -61,6 +61,9 @@ public class AddressNormalizer {
         normalized = normalized.replaceAll("\\bSAINT LOUIS\\b", "STL")
                            .replaceAll("\\bST LOUIS\\b", "STL");
 
+        normalized = normalized.replaceAll("\\bOKLAHOMA CITY\\b", "OKC")
+                           .replaceAll("\\bKANSAS CITY\\b", "KC");
+
         normalized = normalized.replaceAll("\\bSAINT\\b", "ST");
 
         normalized = normalized.trim().replaceAll("\\s+", " ");
