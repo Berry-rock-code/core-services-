@@ -67,11 +67,16 @@ public class BuildiumClientImpl implements BuildiumClient
                     .bodyToMono(List.class)
                     .block();
 
-            return raw == null ? Collections.emptyList() : (List<Map<String, Object>>) (List<?>) raw;
+            if (raw == null)
+            {
+                return Collections.emptyList();
+            }
+
+            return (List<Map<String, Object>>) (List<?>) raw;
         }
         catch (Exception e)
         {
-            log.warn("Failed to fetch rentals page: {}", e.getMessage());
+            log.warn("Failed to fetch rentals page from Buildium. " + e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -103,48 +108,58 @@ public class BuildiumClientImpl implements BuildiumClient
             return new ArrayList<>();
         }
 
-        log.info("Fetching rental units from Buildium");
-        List<Map<String, Object>> allUnits = fetchAllUnits();
-        log.info("Fetched {} total units from Buildium", allUnits.size());
+        log.info("Fetching active lease addresses from Buildium using pagination");
 
-        log.info("Fetching all active leases from Buildium");
-        Map<String, String> leaseIdByUnitId = fetchActiveLeaseIdsByUnitId();
-        log.info("Fetched {} active leases from Buildium", leaseIdByUnitId.size());
-
+        List<Map<String, Object>> allRentals = getAllRentals();
         List<BuildiumAddressRecord> records = new ArrayList<>();
 
-        for (Map<String, Object> unit : allUnits)
+        if (!allRentals.isEmpty())
         {
-            Object addressObj = unit.get("Address");
-            if (!(addressObj instanceof Map<?, ?> rawAddress))
-            {
-                continue;
-            }
+            Map<String, Object> sample = allRentals.get(0);
+            log.info("Sample Buildium rental keys: {}", sample.keySet());
+            log.info("Sample Buildium rental payload: {}", sample);
+        }
 
-            Map<String, Object> address = (Map<String, Object>) rawAddress;
-
-            String addressLine1 = asString(address.get("AddressLine1"));
-            if (addressLine1 == null || addressLine1.isBlank())
-            {
-                continue;
-            }
-
-            String unitId = asString(unit.get("Id"));
-            String propertyId = asString(unit.get("PropertyId"));
-
+        for (Map<String, Object> rental : allRentals)
+        {
             BuildiumAddressRecord record = new BuildiumAddressRecord();
-            record.setBuildiumPropertyId(propertyId);
-            record.setBuildiumUnitId(unitId);
-            record.setRawAddress(addressLine1);
-            record.setCity(asString(address.get("City")));
-            record.setState(asString(address.get("State")));
-            record.setPostalCode(asString(address.get("PostalCode")));
-            record.setBuildiumLeaseId(leaseIdByUnitId.get(unitId));
+
+            record.setBuildiumPropertyId(asString(rental.get("Id")));
+            record.setBuildiumUnitId(asString(rental.get("UnitId")));
+
+            Map<String, Object> addressMap = extractBestAddress(rental);
+
+            if (addressMap != null)
+            {
+                record.setRawAddress(firstNonBlank(
+                        asString(addressMap.get("AddressLine1")),
+                        asString(addressMap.get("Street")),
+                        asString(addressMap.get("Address1")),
+                        asString(addressMap.get("Line1"))
+                ));
+
+                record.setCity(firstNonBlank(
+                        asString(addressMap.get("City")),
+                        asString(addressMap.get("city"))
+                ));
+
+                record.setState(firstNonBlank(
+                        asString(addressMap.get("State")),
+                        asString(addressMap.get("StateCode")),
+                        asString(addressMap.get("state"))
+                ));
+
+                record.setPostalCode(firstNonBlank(
+                        asString(addressMap.get("PostalCode")),
+                        asString(addressMap.get("Zip")),
+                        asString(addressMap.get("ZipCode")),
+                        asString(addressMap.get("postalCode"))
+                ));
+            }
 
             records.add(record);
         }
 
-        log.info("Built {} BuildiumAddressRecords with address data", records.size());
         return records;
     }
 
@@ -213,79 +228,5 @@ public class BuildiumClientImpl implements BuildiumClient
         }
 
         return null;
-    }
-
-    @Override
-    @SuppressWarnings("unchecked")
-    public List<BuildiumAddressRecord> fetchActiveLeaseAddresses()
-    {
-        if (!properties.isEnabled())
-        {
-            return new ArrayList<>();
-        }
-
-        org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BuildiumClientImpl.class);
-        log.info("Fetching active lease addresses from Buildium using pagination");
-
-        List<Map<String, Object>> allRentals = getAllRentals();
-        List<BuildiumAddressRecord> records = new ArrayList<>();
-
-        if (!allRentals.isEmpty())
-        {
-            Map<String, Object> sample = allRentals.get(0);
-            log.info("Sample Buildium rental keys: {}", sample.keySet());
-            log.info("Sample Buildium rental payload: {}", sample);
-        }
-
-        for (Map<String, Object> rental : allRentals)
-        {
-            BuildiumAddressRecord record = new BuildiumAddressRecord();
-
-            record.setBuildiumPropertyId(asString(rental.get("Id")));
-            record.setBuildiumUnitId(asString(rental.get("UnitId")));
-
-            Map<String, Object> addressMap = extractBestAddress(rental);
-
-            if (addressMap != null)
-            {
-                record.setRawAddress(firstNonBlank(
-                        asString(addressMap.get("AddressLine1")),
-                        asString(addressMap.get("Street")),
-                        asString(addressMap.get("Address1")),
-                        asString(addressMap.get("Line1"))
-                ));
-
-                record.setCity(firstNonBlank(
-                        asString(addressMap.get("City")),
-                        asString(addressMap.get("city"))
-                ));
-
-                record.setState(firstNonBlank(
-                        asString(addressMap.get("State")),
-                        asString(addressMap.get("StateCode")),
-                        asString(addressMap.get("state"))
-                ));
-
-                record.setPostalCode(firstNonBlank(
-                        asString(addressMap.get("PostalCode")),
-                        asString(addressMap.get("Zip")),
-                        asString(addressMap.get("ZipCode")),
-                        asString(addressMap.get("postalCode"))
-                ));
-            }
-
-            List<Map<String, Object>> leases = (List<Map<String, Object>>) (List<?>) raw;
-            return asString(leases.get(0).get("Id"));
-        }
-        catch (Exception e)
-        {
-            log.warn("Failed to fetch active lease for unitId={}: {}", unitId, e.getMessage());
-            return null;
-        }
-    }
-
-    private String asString(Object value)
-    {
-        return value == null ? null : String.valueOf(value);
     }
 }
