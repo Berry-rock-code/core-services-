@@ -65,6 +65,9 @@ public class SalesforceClientImpl implements SalesforceClient
     @Value("${integration.vendor.salesforce.fields.stage:StageName}")
     private String stageField;
 
+    @Value("${integration.vendor.salesforce.query.stage-filter:}")
+    private String stageFilter;
+
     private final RestTemplate restTemplate;
 
     public SalesforceClientImpl()
@@ -186,9 +189,15 @@ public class SalesforceClientImpl implements SalesforceClient
         if (!isBlank(postalCodeField)) fieldList.add(postalCodeField);
         if (!isBlank(countryCodeField)) fieldList.add(countryCodeField);
 
+        String whereClause = fullAddressField + " != null";
+        if (!isBlank(stageFilter))
+        {
+            whereClause += " AND " + stageField + " = '" + stageFilter + "'";
+        }
+
         String soql = "SELECT " + String.join(", ", fieldList)
                 + " FROM Opportunity"
-                + " WHERE " + stageField + " = 'Closed Won'";
+                + " WHERE " + whereClause;
 
         String queryUrl = instanceUrl + "/services/data/" + apiVersion + "/query?q={soql}";
 
@@ -205,16 +214,20 @@ public class SalesforceClientImpl implements SalesforceClient
             log.info("Salesforce Query Host (instance_url): {}", instanceUrl);
             log.info("Salesforce SOQL: {}", soql);
 
-            while (nextRecordsUrl != null) {
+            while (nextRecordsUrl != null)
+            {
                 ResponseEntity<Map<String, Object>> response;
-                if (isNext) {
+                if (isNext)
+                {
                     response = restTemplate.exchange(
                             instanceUrl + nextRecordsUrl,
                             HttpMethod.GET,
                             entity,
                             new ParameterizedTypeReference<Map<String, Object>>() {}
                     );
-                } else {
+                }
+                else
+                {
                     response = restTemplate.exchange(
                             queryUrl,
                             HttpMethod.GET,
@@ -225,11 +238,14 @@ public class SalesforceClientImpl implements SalesforceClient
                 }
 
                 Map<String, Object> body = response.getBody();
-                if (body != null) {
+                if (body != null)
+                {
                     allRecords.addAll(parseSalesforceResponse(body));
                     nextRecordsUrl = (String) body.get("nextRecordsUrl");
                     isNext = true;
-                } else {
+                }
+                else
+                {
                     nextRecordsUrl = null;
                 }
             }
@@ -268,10 +284,34 @@ public class SalesforceClientImpl implements SalesforceClient
             String countryCode = isBlank(countryCodeField) ? null : asString(record.get(countryCodeField));
 
             StringBuilder raw = new StringBuilder();
-            if (fullAddress != null) raw.append(fullAddress);
-            if (city != null) { if (raw.length() > 0) raw.append(", "); raw.append(city); }
-            if (state != null) { if (raw.length() > 0) raw.append(", "); raw.append(state); }
-            if (postalCode != null) { if (raw.length() > 0) raw.append(" "); raw.append(postalCode); }
+            if (fullAddress != null)
+            {
+                raw.append(fullAddress);
+            }
+            if (city != null)
+            {
+                if (raw.length() > 0)
+                {
+                    raw.append(", ");
+                }
+                raw.append(city);
+            }
+            if (state != null)
+            {
+                if (raw.length() > 0)
+                {
+                    raw.append(", ");
+                }
+                raw.append(state);
+            }
+            if (postalCode != null)
+            {
+                if (raw.length() > 0)
+                {
+                    raw.append(" ");
+                }
+                raw.append(postalCode);
+            }
 
             sf.setRawAddress(raw.toString());
             sf.setAddressLine(fullAddress);

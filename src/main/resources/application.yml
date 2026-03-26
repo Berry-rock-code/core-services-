@@ -33,7 +33,7 @@ integration:
     google-sheets:
       enabled: true
       application-name: ${GOOGLE_SHEETS_APPLICATION_NAME:integration-hub}
-      spreadsheet-id: 1xrObpEEGUjIxUVTtNrNU3a3KS79wN7xZURm1_2hpQh0
+      spreadsheet-id: ${GOOGLE_SHEETS_SPREADSHEET_ID:}
       credentials-path: ${GOOGLE_APPLICATION_CREDENTIALS:}
 
     salesforce:
@@ -52,13 +52,15 @@ integration:
         postal-code: New_Purchase_Address__PostalCode__s
         country-code: New_Purchase_Address__CountryCode__s
         stage: StageName
+      query:
+        stage-filter: ""
 
 address:
   pipeline:
     enabled: true
     dry-run: true
-    sheet-id: 1xrObpEEGUjIxUVTtNrNU3a3KS79wN7xZURm1_2hpQh0
-    sheet-name: Copy of LeaseOption Properties
+    sheet-id: ${GOOGLE_SHEETS_SPREADSHEET_ID:}
+    sheet-name: ${GOOGLE_SHEETS_SHEET_NAME:}
     header-row: 2
     header:
       address: Address

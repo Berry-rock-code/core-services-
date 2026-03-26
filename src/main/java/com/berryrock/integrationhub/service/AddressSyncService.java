@@ -171,7 +171,11 @@ public class AddressSyncService
 
                 if (request.isSyncGoogleSheet() && !request.isDryRun())
                 {
-                    updates.add(new SheetBatchUpdateRequest(gs.getRowNumber(), sf.getOpportunityId(), buildiumId));
+                    SheetBatchUpdateRequest req = new SheetBatchUpdateRequest();
+                    req.setRowNumber(gs.getRowNumber());
+                    req.setSalesforceId(sf.getOpportunityId());
+                    req.setBuildiumId(buildiumId);
+                    updates.add(req);
                 }
             }
             else if (addrOnlyKey != null && gsAddressOnlyMap.containsKey(addrOnlyKey))
@@ -183,9 +187,9 @@ public class AddressSyncService
                 log.debug("Address-only match (SYNCED_ADDRESS_ONLY) for SF opportunity {}: {}", sf.getOpportunityId(), addrOnlyKey);
 
                 String buildiumId = null;
-                if (bdMap.containsKey(addrOnlyKey))
+                if (bdMap.containsKey(fullKey))
                 {
-                    buildiumId = bdMap.get(addrOnlyKey).get(0).getBuildiumPropertyId();
+                    buildiumId = bdMap.get(fullKey).get(0).getBuildiumPropertyId();
                 }
 
                 if (request.isSyncGoogleSheet() && !request.isDryRun()) {

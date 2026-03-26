@@ -1,0 +1,19 @@
+address:
+  pipeline:
+    enabled: false
+    dry-run: true
+ 
+integration:
+  vendor:
+    buildium:
+      enabled: false
+      base-url: https://api.buildium.com
+      client-id: test
+      client-secret: test
+      connect-timeout-seconds: 5
+      read-timeout-seconds: 10
+      page-size: 100
+    google-sheets:
+      enabled: false
+    salesforce:
+      enabled: false
