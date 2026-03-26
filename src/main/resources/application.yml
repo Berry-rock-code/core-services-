@@ -52,6 +52,8 @@ integration:
         postal-code: New_Purchase_Address__PostalCode__s
         country-code: New_Purchase_Address__CountryCode__s
         stage: StageName
+      query:
+        stage-filter: ""
 
 address:
   pipeline:

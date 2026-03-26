@@ -64,6 +64,7 @@ public class AddressPipelineService
 
         Map<String, SalesforceAddressRecord> cleanSfByNormalized = new HashMap<>();
         Map<String, SalesforceAddressRecord> cleanSfByAddressOnly = new HashMap<>();
+        Map<String, SalesforceAddressRecord> partialSfByAddressOnly = new HashMap<>();
 
         for (SalesforceAddressRecord record : sfRecords)
         {
@@ -104,6 +105,13 @@ public class AddressPipelineService
 
                 case PARTIAL:
                     partialCount++;
+
+                    String partialAddressOnlyKey = buildAddressOnlyKey(record.getAddressLine());
+
+                    if (partialAddressOnlyKey != null && !partialAddressOnlyKey.isBlank())
+                    {
+                        partialSfByAddressOnly.put(partialAddressOnlyKey, record);
+                    }
                     break;
 
                 case SUSPICIOUS:
@@ -163,6 +171,7 @@ public class AddressPipelineService
         List<SheetBatchUpdateRequest> updates = new ArrayList<>();
 
         int ltMatchedToSf = 0;
+        int ltMatchedToSfPartial = 0;
         int ltNoSfMatch = 0;
         int ltMatchedToBuildium = 0;
         int ltNoBuildiumMatch = 0;
@@ -203,12 +212,32 @@ public class AddressPipelineService
                 matchedByAddressOnly = sfRecord != null;
             }
 
+            if (sfRecord == null && rowAddressOnlyKey != null && !rowAddressOnlyKey.isBlank())
+            {
+                sfRecord = partialSfByAddressOnly.get(rowAddressOnlyKey);
+                if (sfRecord != null)
+                {
+                    matchedByAddressOnly = true;
+                    ltMatchedToSfPartial++;
+                }
+            }
+
             if (sfRecord == null)
             {
-                if (ltNoSfMatch < 10)
+                if (ltNoSfMatch < 100)
                 {
+                    String partialCandidate = "none";
+                    if (rowAddressOnlyKey != null && !rowAddressOnlyKey.isBlank())
+                    {
+                        SalesforceAddressRecord partialMatch = partialSfByAddressOnly.get(rowAddressOnlyKey);
+                        if (partialMatch != null)
+                        {
+                            partialCandidate = partialMatch.getOpportunityId() + " (PARTIAL)";
+                        }
+                    }
+
                     log.info(
-                            "[Debug] No SF match for row {} -> rawAddress='{}', parsedAddress='{}', parsedCity='{}', parsedState='{}', parsedZip='{}', fullKey='{}', addressOnlyKey='{}'",
+                            "[Debug] No SF match for row {} -> rawAddress='{}', parsedAddress='{}', parsedCity='{}', parsedState='{}', parsedZip='{}', fullKey='{}', addressOnlyKey='{}', partialCandidate='{}'",
                             row.getRowNumber(),
                             row.getAddress(),
                             parsed.addressLine,
@@ -216,7 +245,8 @@ public class AddressPipelineService
                             parsed.state,
                             parsed.postalCode,
                             rowNormalized,
-                            rowAddressOnlyKey
+                            rowAddressOnlyKey,
+                            partialCandidate
                     );
                 }
 
@@ -231,7 +261,20 @@ public class AddressPipelineService
             update.setSalesforceId(sfRecord.getOpportunityId());
             update.setSfStandardizedAddress(sfRecord.getRawAddress());
             update.setSfAddressQuality(sfRecord.getQuality());
-            update.setSfAddressSyncStatus(matchedByAddressOnly ? "SYNCED_ADDRESS_ONLY" : "SYNCED");
+            String syncStatus;
+            if ("PARTIAL".equals(sfRecord.getQuality()))
+            {
+                syncStatus = "SYNCED_PARTIAL";
+            }
+            else if (matchedByAddressOnly)
+            {
+                syncStatus = "SYNCED_ADDRESS_ONLY";
+            }
+            else
+            {
+                syncStatus = "SYNCED";
+            }
+            update.setSfAddressSyncStatus(syncStatus);
 
             List<BuildiumAddressRecord> candidates = null;
 
@@ -268,8 +311,9 @@ public class AddressPipelineService
             updates.add(update);
         }
 
-        log.info("[Summary] CLEAN rows matched to LT by address: {}", ltMatchedToSf);
-        log.info("[Summary] CLEAN rows with no LT match: {}", ltNoSfMatch);
+        log.info("[Summary] CLEAN rows matched to SF: {}", ltMatchedToSf);
+        log.info("[Summary] PARTIAL rows matched to SF (Pass 3): {}", ltMatchedToSfPartial);
+        log.info("[Summary] Rows with no SF match: {}", ltNoSfMatch);
         log.info("[Summary] LT Matched to Buildium: {}", ltMatchedToBuildium);
         log.info("[Summary] LT No Buildium Match: {}", ltNoBuildiumMatch);
         log.info("[Summary] LT Ambiguous Buildium Match: {}", ltAmbiguousBuildiumMatch);
