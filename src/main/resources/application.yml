@@ -58,7 +58,7 @@ address:
     enabled: true
     dry-run: true
     sheet-id: ${GOOGLE_SHEETS_SPREADSHEET_ID:}
-    sheet-name: Copy of LeaseOption Properties
+    sheet-name: ${GOOGLE_SHEETS_SHEET_NAME:}
     header-row: 2
     header:
       address: Address

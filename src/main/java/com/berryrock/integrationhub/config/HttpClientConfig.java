@@ -20,6 +20,7 @@ public class HttpClientConfig
                 .baseUrl(properties.getBaseUrl())
                 .defaultHeader("x-buildium-client-id", properties.getClientId())
                 .defaultHeader("x-buildium-client-secret", properties.getClientSecret())
+                .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
                 .build();
     }
 }

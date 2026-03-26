@@ -207,7 +207,7 @@ public class BuildiumClientImpl implements BuildiumClient
         }
         catch (Exception e)
         {
-            log.warn("Failed to fetch active lease addresses from Buildium: {}", e.getMessage());
+            log.warn("Failed to fetch active lease addresses from Buildium: {}", e.getMessage(), e);
             return new ArrayList<>();
         }
     }
