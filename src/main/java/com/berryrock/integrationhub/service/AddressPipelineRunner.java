@@ -9,35 +9,46 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 @Component
-public class AddressPipelineRunner implements CommandLineRunner {
-
+public class AddressPipelineRunner implements CommandLineRunner
+{
     private static final Logger log = LoggerFactory.getLogger(AddressPipelineRunner.class);
 
     private final AddressPipelineService pipelineService;
     private final AddressPipelineProperties properties;
     private final ApplicationContext context;
 
-    public AddressPipelineRunner(AddressPipelineService pipelineService, AddressPipelineProperties properties, ApplicationContext context) {
+    public AddressPipelineRunner(AddressPipelineService pipelineService,
+                                 AddressPipelineProperties properties,
+                                 ApplicationContext context)
+    {
         this.pipelineService = pipelineService;
         this.properties = properties;
         this.context = context;
     }
 
     @Override
-    public void run(String... args) throws Exception {
-        if (!properties.isEnabled()) {
+    public void run(String... args) throws Exception
+    {
+        if (!properties.isEnabled())
+        {
             return;
         }
 
-        try {
+        try
+        {
             log.info("AddressPipelineRunner started. Property address.pipeline.enabled is true.");
             pipelineService.runPipeline();
-        } catch (Exception e) {
+        }
+        catch (Exception e)
+        {
             log.error("AddressPipelineRunner failed: {}", e.getMessage(), e);
-        } finally {
+        }
+        finally
+        {
             log.info("AddressPipelineRunner finished.");
-            int exitCode = SpringApplication.exit(context, () -> 0);
-            System.exit(exitCode);
+            SpringApplication.exit(context, () -> 0);
+            // Do NOT call System.exit() here -- SpringApplication.exit() is sufficient
+            // and System.exit() kills the Surefire forked JVM during test runs.
         }
     }
 }
