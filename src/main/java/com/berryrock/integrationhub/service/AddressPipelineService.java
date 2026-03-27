@@ -8,6 +8,7 @@ import com.berryrock.integrationhub.model.BuildiumAddressRecord;
 import com.berryrock.integrationhub.model.GoogleSheetAddressRow;
 import com.berryrock.integrationhub.model.SalesforceAddressRecord;
 import com.berryrock.integrationhub.model.SheetBatchUpdateRequest;
+import com.berryrock.integrationhub.util.AddressNormalizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -25,7 +26,7 @@ public class AddressPipelineService
     private final SalesforceClient salesforceClient;
     private final GoogleSheetsClient googleSheetsClient;
     private final BuildiumClient buildiumClient;
-    private final AddressNormalizationService normalizationService;
+    private final AddressNormalizer addressNormalizer;
     private final AddressQualityService qualityService;
     private final AddressPipelineProperties properties;
 
@@ -33,7 +34,7 @@ public class AddressPipelineService
             SalesforceClient salesforceClient,
             GoogleSheetsClient googleSheetsClient,
             BuildiumClient buildiumClient,
-            AddressNormalizationService normalizationService,
+            AddressNormalizer addressNormalizer,
             AddressQualityService qualityService,
             AddressPipelineProperties properties
     )
@@ -41,7 +42,7 @@ public class AddressPipelineService
         this.salesforceClient = salesforceClient;
         this.googleSheetsClient = googleSheetsClient;
         this.buildiumClient = buildiumClient;
-        this.normalizationService = normalizationService;
+        this.addressNormalizer = addressNormalizer;
         this.qualityService = qualityService;
         this.properties = properties;
     }
@@ -82,7 +83,7 @@ public class AddressPipelineService
                     cleanCount++;
 
                     record.setNormalizedAddress(
-                            normalizationService.buildNormalizedKey(
+                            addressNormalizer.buildNormalizedKey(
                                     record.getAddressLine(),
                                     record.getCity(),
                                     record.getState(),
@@ -143,7 +144,7 @@ public class AddressPipelineService
             }
 
             br.setNormalizedAddress(
-                    normalizationService.buildNormalizedKey(
+                    addressNormalizer.buildNormalizedKey(
                             br.getRawAddress(),
                             br.getCity(),
                             br.getState(),
@@ -182,7 +183,7 @@ public class AddressPipelineService
         {
             ParsedSheetAddress parsed = parseSheetRowAddress(row);
 
-            String rowNormalized = normalizationService.buildNormalizedKey(
+            String rowNormalized = addressNormalizer.buildNormalizedKey(
                     parsed.addressLine,
                     parsed.city,
                     parsed.state,
@@ -367,7 +368,7 @@ public class AddressPipelineService
             return null;
         }
 
-        return normalizationService.normalize(addressLine);
+        return addressNormalizer.normalize(addressLine);
     }
 
     private ParsedSheetAddress parseSheetRowAddress(GoogleSheetAddressRow row)

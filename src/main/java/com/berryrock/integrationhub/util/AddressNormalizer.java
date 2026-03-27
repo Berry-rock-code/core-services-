@@ -1,176 +1,140 @@
 package com.berryrock.integrationhub.util;
 
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 /**
- * Utility for normalizing address strings and building composite comparison keys.
+ * Normalizes raw address strings and builds composite comparison keys.
  *
- * Part of the util package — used by
- * {@link com.berryrock.integrationhub.service.AddressSyncService} as the normalization
- * engine for the API-triggered sync path.
+ * The canonical normalization implementation shared by both the startup-time
+ * batch pipeline ({@link com.berryrock.integrationhub.service.AddressPipelineService})
+ * and the API-triggered sync path
+ * ({@link com.berryrock.integrationhub.service.AddressSyncService}).
  *
- * This class applies a deterministic set of transformations (uppercasing, punctuation
- * removal, suffix abbreviation, directional expansion, city aliases, ZIP+4 stripping) so
- * that addresses that are textually different but semantically identical will produce the
- * same normalized string and therefore the same lookup key.
- *
- * Note: {@link com.berryrock.integrationhub.service.AddressNormalizationService} is a
- * parallel implementation used by the startup-time pipeline path. The two share the same
- * rule set but are independent Spring beans.
+ * Transformations applied (in order):
+ * <ol>
+ *   <li>Uppercase the entire string</li>
+ *   <li>Remove periods, commas, hash signs, and apostrophes</li>
+ *   <li>Collapse and trim whitespace</li>
+ *   <li>Strip ZIP+4 suffix down to 5-digit ZIP</li>
+ *   <li>Abbreviate street suffixes (STREET -> ST, AVENUE -> AVE, etc.)</li>
+ *   <li>Resolve city aliases (OKLAHOMA CITY -> OKC, ST LOUIS / SAINT LOUIS -> STL, KANSAS CITY -> KC)</li>
+ *   <li>Abbreviate directional words — compound before cardinal to avoid NW being parsed as N + W</li>
+ *   <li>Strip trailing apartment/unit suffixes (e.g., "- 12" at end of string)</li>
+ * </ol>
  */
 @Component
 public class AddressNormalizer
 {
     /**
-     * Normalizes a single address component (typically a street address line).
+     * Normalizes a single address component string.
      *
-     * Transformations applied in order:
-     * <ol>
-     *   <li>Uppercase the entire string</li>
-     *   <li>Remove periods, commas, and apostrophes</li>
-     *   <li>Expand street suffix words to standard USPS abbreviations
-     *       (e.g., STREET -> ST, AVENUE -> AVE)</li>
-     *   <li>Expand directional words (NORTH -> N, NORTHEAST -> NE, etc.)</li>
-     *   <li>Apply city alias rules that collapse Saint Louis variants to STL</li>
-     *   <li>Abbreviate remaining standalone SAINT to ST</li>
-     *   <li>Collapse multiple whitespace characters to a single space</li>
-     * </ol>
+     * Applies the full transformation chain described in the class Javadoc. Passing
+     * {@code null} returns an empty string rather than throwing.
      *
-     * @param address the raw address string to normalize; may be {@code null}
-     * @return normalized uppercase string, or {@code null} if input is blank
+     * @param address raw address string; may be {@code null}
+     * @return normalized uppercase string with punctuation removed and abbreviations applied;
+     *         empty string if input is {@code null}
      */
     public String normalize(String address)
     {
-        if (StringUtils.isBlank(address))
+        if (address == null)
         {
-            return null;
+            return "";
         }
 
-        String normalized = address.toUpperCase()
-                .replace(".", "")
-                .replace(",", "")
-                .replace("'", "");
+        String normalized = address.toUpperCase();
 
-        // Standardize street suffixes to USPS abbreviations
-        normalized = normalized.replaceAll("\\bSTREET\\b", "ST")
-                .replaceAll("\\bAVENUE\\b", "AVE")
-                .replaceAll("\\bPLACE\\b", "PL")
-                .replaceAll("\\bROAD\\b", "RD")
-                .replaceAll("\\bDRIVE\\b", "DR")
-                .replaceAll("\\bLANE\\b", "LN")
-                .replaceAll("\\bBOULEVARD\\b", "BLVD")
-                .replaceAll("\\bCOURT\\b", "CT")
-                .replaceAll("\\bTERRACE\\b", "TER");
+        // Remove common punctuation characters that vary across data sources
+        normalized = normalized.replaceAll("[.,#']", "");
 
-        // Standardize directional words to single- or two-letter abbreviations
-        normalized = normalized.replaceAll("\\bNORTH\\b", "N")
-                .replaceAll("\\bSOUTH\\b", "S")
-                .replaceAll("\\bEAST\\b", "E")
-                .replaceAll("\\bWEST\\b", "W")
-                .replaceAll("\\bNORTHEAST\\b", "NE")
-                .replaceAll("\\bNORTHWEST\\b", "NW")
-                .replaceAll("\\bSOUTHEAST\\b", "SE")
-                .replaceAll("\\bSOUTHWEST\\b", "SW");
+        // Collapse multiple whitespace characters to a single space and trim edges
+        normalized = normalized.replaceAll("\\s+", " ").trim();
 
-        // Collapse Saint Louis variants to STL before the general SAINT -> ST rule
-        // to avoid producing "ST LOUIS" as an intermediate value
-        normalized = normalized.replaceAll("\\bSAINT LOUIS\\b", "STL")
-                .replaceAll("\\bST LOUIS\\b", "STL");
+        // Strip ZIP+4 extended format to the base 5-digit ZIP for consistent matching
+        normalized = normalized.replaceAll("\\b(\\d{5})-\\d{4}\\b", "$1");
 
-        // Abbreviate remaining standalone SAINT occurrences
-        normalized = normalized.replaceAll("\\bSAINT\\b", "ST");
+        // Standardize street suffix words to USPS abbreviations
+        normalized = replaceWord(normalized, "STREET", "ST");
+        normalized = replaceWord(normalized, "AVENUE", "AVE");
+        normalized = replaceWord(normalized, "ROAD", "RD");
+        normalized = replaceWord(normalized, "DRIVE", "DR");
+        normalized = replaceWord(normalized, "LANE", "LN");
+        normalized = replaceWord(normalized, "COURT", "CT");
+        normalized = replaceWord(normalized, "PLACE", "PL");
+        normalized = replaceWord(normalized, "BOULEVARD", "BLVD");
+        normalized = replaceWord(normalized, "TERRACE", "TER");
+        normalized = replaceWord(normalized, "PARKWAY", "PKWY");
+        normalized = replaceWord(normalized, "CIRCLE", "CIR");
 
-        // Collapse internal whitespace and trim
-        normalized = normalized.trim().replaceAll("\\s+", " ");
+        // Resolve known city aliases to their canonical abbreviations.
+        // Multi-word aliases must be applied before single-word directionals
+        // to avoid OKLAHOMA being collapsed to a directional "N" or similar.
+        normalized = replaceWord(normalized, "OKLAHOMA CITY", "OKC");
+        normalized = replaceWord(normalized, "ST LOUIS", "STL");
+        normalized = replaceWord(normalized, "SAINT LOUIS", "STL");
+        normalized = replaceWord(normalized, "KANSAS CITY", "KC");
 
-        return normalized;
+        // Abbreviate compound directional words before single-letter directionals
+        // to avoid NW being parsed as N + W
+        normalized = replaceWord(normalized, "NORTHWEST", "NW");
+        normalized = replaceWord(normalized, "NORTHEAST", "NE");
+        normalized = replaceWord(normalized, "SOUTHWEST", "SW");
+        normalized = replaceWord(normalized, "SOUTHEAST", "SE");
+
+        // Abbreviate single-word cardinal directions
+        normalized = replaceWord(normalized, "NORTH", "N");
+        normalized = replaceWord(normalized, "SOUTH", "S");
+        normalized = replaceWord(normalized, "EAST", "E");
+        normalized = replaceWord(normalized, "WEST", "W");
+
+        // Remove trailing apartment/unit designators like "- 12" that appear in some sources
+        normalized = normalized.replaceAll("\\s*-\\s*\\d+$", "");
+
+        return normalized.trim();
     }
 
     /**
-     * Normalizes a city name using city-specific alias rules and general punctuation cleanup.
+     * Builds a pipe-delimited composite key from the four address components.
      *
-     * In addition to the punctuation and whitespace rules applied by {@link #normalize},
-     * this method resolves known city name variants to canonical abbreviations:
-     * <ul>
-     *   <li>Saint Louis / St Louis -> STL</li>
-     *   <li>Oklahoma City -> OKC</li>
-     *   <li>Kansas City -> KC</li>
-     *   <li>Saint (prefix) -> ST</li>
-     * </ul>
+     * Each component is individually normalized via {@link #normalize} before being
+     * concatenated with {@code |} as the delimiter. A {@code null} component contributes
+     * an empty segment (two consecutive pipes) rather than being skipped, so keys remain
+     * structurally consistent regardless of which fields are populated.
      *
-     * @param city the raw city name to normalize; may be {@code null}
-     * @return normalized city string, or {@code null} if input is blank
+     * Example result: {@code "123 MAIN ST|TULSA|OK|74101"}
+     *
+     * @param addressLine street address component; may be {@code null}
+     * @param city        city component; may be {@code null}
+     * @param state       state component; may be {@code null}
+     * @param postalCode  ZIP or postal code component; may be {@code null}
+     * @return pipe-delimited normalized key
      */
-    public String normalizeCity(String city)
-    {
-        if (StringUtils.isBlank(city))
-        {
-            return null;
-        }
-
-        String normalized = city.toUpperCase()
-                .replace(".", "")
-                .replace(",", "");
-
-        // Apply Saint Louis variants first (order matters: must precede the SAINT -> ST rule)
-        normalized = normalized.replaceAll("\\bSAINT LOUIS\\b", "STL")
-                .replaceAll("\\bST LOUIS\\b", "STL");
-
-        // Alias Oklahoma City and Kansas City to their common abbreviations
-        normalized = normalized.replaceAll("\\bOKLAHOMA CITY\\b", "OKC")
-                .replaceAll("\\bKANSAS CITY\\b", "KC");
-
-        // Abbreviate remaining SAINT occurrences
-        normalized = normalized.replaceAll("\\bSAINT\\b", "ST");
-
-        normalized = normalized.trim().replaceAll("\\s+", " ");
-
-        return normalized;
-    }
-
-    /**
-     * Builds a pipe-delimited composite key from pre-normalized address components.
-     *
-     * The resulting key is used as the lookup key in the address matching maps. Components
-     * that are {@code null} are omitted from the key. The ZIP code is truncated to 5 digits
-     * if a ZIP+4 format ({@code 12345-6789}) is detected.
-     *
-     * @param address normalized street address line (from {@link #normalize})
-     * @param city    normalized city name (from {@link #normalizeCity})
-     * @param state   normalized state code (caller should uppercase before passing)
-     * @param zip     postal code; ZIP+4 format is automatically truncated to 5 digits
-     * @return pipe-delimited composite key, e.g., {@code "123 MAIN ST|TULSA|OK|74101"}
-     */
-    public String buildComparableKey(String address, String city, String state, String zip)
+    public String buildNormalizedKey(String addressLine, String city, String state, String postalCode)
     {
         StringBuilder sb = new StringBuilder();
 
-        if (address != null)
-        {
-            sb.append(address);
-        }
-
-        if (city != null)
-        {
-            sb.append("|").append(city);
-        }
-
-        if (state != null)
-        {
-            sb.append("|").append(state);
-        }
-
-        if (zip != null)
-        {
-            // Truncate ZIP+4 to the base 5-digit ZIP for consistent key comparison
-            if (zip.length() > 5 && zip.contains("-"))
-            {
-                zip = zip.substring(0, 5);
-            }
-            sb.append("|").append(zip);
-        }
+        // Each segment normalized independently; null -> empty segment to keep delimiter structure consistent
+        sb.append(addressLine != null ? normalize(addressLine) : "").append("|");
+        sb.append(city != null ? normalize(city) : "").append("|");
+        sb.append(state != null ? normalize(state) : "").append("|");
+        sb.append(postalCode != null ? normalize(postalCode) : "");
 
         return sb.toString();
+    }
+
+    /**
+     * Replaces whole-word occurrences of {@code target} with {@code replacement} in {@code text}.
+     *
+     * Uses word-boundary anchors ({@code \b}) so that, for example, replacing STREET
+     * does not affect STREETCAR.
+     *
+     * @param text        the string to search within
+     * @param target      the word to find (should be uppercase)
+     * @param replacement the abbreviation to substitute
+     * @return the modified string
+     */
+    private String replaceWord(String text, String target, String replacement)
+    {
+        return text.replaceAll("\\b" + target + "\\b", replacement);
     }
 }
