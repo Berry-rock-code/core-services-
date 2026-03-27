@@ -295,10 +295,7 @@ public class AddressSyncService
 
     private String createFullNormalizedAddress(String address, String city, String state, String zip)
     {
-        String normAddr = addressNormalizer.normalize(address);
-        String normCity = addressNormalizer.normalizeCity(city);
-        String normState = state != null ? state.toUpperCase() : null;
-        return addressNormalizer.buildComparableKey(normAddr, normCity, normState, zip);
+        return addressNormalizer.buildNormalizedKey(address, city, state, zip);
     }
 
     private <T> void checkForDuplicates(Map<String, List<T>> map, String source, AddressSyncSummary summary)

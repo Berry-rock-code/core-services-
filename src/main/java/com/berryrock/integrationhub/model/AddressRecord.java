@@ -20,7 +20,7 @@ public class AddressRecord
 
     /**
      * Normalized form of the address, populated by the pipeline after
-     * {@link com.berryrock.integrationhub.service.AddressNormalizationService} runs.
+     * {@link com.berryrock.integrationhub.util.AddressNormalizer} runs.
      */
     private String normalizedAddress;
 

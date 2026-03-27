@@ -40,7 +40,7 @@ public class SalesforceAddressRecord
 
     /**
      * Normalized composite key built by the pipeline for address matching.
-     * Populated by {@link com.berryrock.integrationhub.service.AddressNormalizationService}.
+     * Populated by {@link com.berryrock.integrationhub.util.AddressNormalizer}.
      */
     private String normalizedAddress;
 

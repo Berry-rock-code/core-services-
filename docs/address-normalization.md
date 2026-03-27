@@ -2,12 +2,12 @@
 
 Normalization is the step that makes addresses from three different systems (Salesforce, Google Sheets, Buildium) comparable. Each system has its own data-entry conventions, abbreviations, and quirks. Without normalization, "123 North Main Street" and "123 N Main St" would never match even though they refer to the same property.
 
-The normalization pipeline is implemented in two places:
+The normalization pipeline is implemented in a single class, `AddressNormalizer` (`util` package), which is a Spring `@Component` injected by both execution paths:
 
-- `AddressNormalizationService` — used by the startup-time pipeline (`AddressPipelineService`)
-- `AddressNormalizer` (util) — used by the API-triggered sync path (`AddressSyncService`)
+- `AddressPipelineService` — startup-time batch pipeline
+- `AddressSyncService` — API-triggered sync path
 
-Both apply the same conceptual rule set. Rules are applied in the order listed below. The order matters: some rules would produce incorrect results if applied out of sequence.
+Rules are applied in the order listed below. The order matters: some rules would produce incorrect results if applied out of sequence.
 
 ---
 
