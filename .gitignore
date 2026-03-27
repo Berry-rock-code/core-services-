@@ -1,4 +1,5 @@
 target/
+.claude/
 
 # local spring config
 src/main/resources/application-local.yml
