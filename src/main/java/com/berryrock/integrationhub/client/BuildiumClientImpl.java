@@ -14,6 +14,21 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * REST client implementation for the Buildium property management API.
+ *
+ * Part of the client layer — fetches rental unit and active-lease records from the
+ * Buildium v1 REST API using a pre-configured {@link org.springframework.web.reactive.function.client.WebClient}.
+ * Pagination is handled internally via an offset loop that continues until a page smaller
+ * than {@code PAGE_SIZE} is returned.
+ *
+ * Address records are built by joining unit data (which carries the physical address) with
+ * active lease data (which carries the lease ID) on the shared unit ID. Units that have no
+ * matching active lease are still returned with a {@code null} lease ID.
+ *
+ * When {@code integration.vendor.buildium.enabled} is {@code false}, all methods return
+ * empty results without making any HTTP calls.
+ */
 @Component
 public class BuildiumClientImpl implements BuildiumClient
 {
@@ -24,6 +39,13 @@ public class BuildiumClientImpl implements BuildiumClient
     private final WebClient buildiumWebClient;
     private final BuildiumProperties properties;
 
+    /**
+     * Constructs the client with the Buildium-specific web client and configuration properties.
+     *
+     * @param buildiumWebClient a pre-configured {@link WebClient} with the Buildium base URL
+     *                          and credential headers already set
+     * @param properties        Buildium connection settings, including the enabled flag
+     */
     public BuildiumClientImpl(WebClient buildiumWebClient, BuildiumProperties properties)
     {
         this.buildiumWebClient = buildiumWebClient;

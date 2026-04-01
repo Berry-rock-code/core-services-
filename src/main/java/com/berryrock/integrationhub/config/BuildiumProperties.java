@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * Part of the config package — binds the {@code integration.vendor.buildium.*} prefix
  * from {@code application.yml} (or environment variable overrides) to strongly typed
  * fields. Registered as a managed bean via
- * {@link IntegrationConfig#@EnableConfigurationProperties}.
+ * {@link IntegrationConfig}.
  *
  * All credential fields default to empty strings and must be supplied via environment
  * variables ({@code BUILDIUM_CLIENT_ID}, {@code BUILDIUM_CLIENT_SECRET}) before the
@@ -17,6 +17,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "integration.vendor.buildium")
 public class BuildiumProperties
 {
+    /**
+     * Creates a new instance; field values are populated by Spring Boot from the
+     * {@code integration.vendor.buildium.*} configuration prefix.
+     */
+    public BuildiumProperties()
+    {
+    }
+
     /**
      * Master on/off switch for the Buildium integration.
      * When {@code false}, {@link com.berryrock.integrationhub.client.BuildiumClientImpl}

@@ -34,6 +34,13 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler
 {
+    /**
+     * Creates a new instance; Spring manages the lifecycle of this controller advice.
+     */
+    public GlobalExceptionHandler()
+    {
+    }
+
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     /**

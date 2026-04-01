@@ -23,6 +23,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * API-triggered address synchronization service.
+ *
+ * Part of the service layer — implements the on-demand sync path exposed via the
+ * REST endpoint {@code POST /api/v1/workflows/address-sync/run}. Unlike the startup
+ * pipeline, this service supports dry-run mode, optional CSV input in place of the
+ * live Google Sheet, and selective Buildium enrichment via the
+ * {@link com.berryrock.integrationhub.dto.AddressSyncRequest} flags.
+ *
+ * Address matching uses a two-pass strategy: a full normalized key match first, followed
+ * by an address-line-only fallback for records where city, state, or ZIP differs between
+ * systems. Duplicate keys within any data set are surfaced as warnings in the returned
+ * {@link com.berryrock.integrationhub.dto.AddressSyncSummary}.
+ */
 @Service
 public class AddressSyncService
 {
@@ -37,6 +51,16 @@ public class AddressSyncService
     private final AddressNormalizer addressNormalizer;
     private final AddressMatcher addressMatcher;
 
+    /**
+     * Constructs the sync service with all required integration clients and helpers.
+     *
+     * @param salesforceClient   client for fetching Opportunity records from Salesforce
+     * @param googleSheetsClient client for reading and writing the Loan Tape Google Sheet
+     * @param buildiumClient     client for fetching active-lease address records from Buildium
+     * @param auditLogService    service for logging workflow lifecycle events
+     * @param addressNormalizer  utility for normalizing and keying address strings
+     * @param addressMatcher     utility for grouping records into normalized-address lookup maps
+     */
     public AddressSyncService(SalesforceClient salesforceClient,
                               GoogleSheetsClient googleSheetsClient,
                               BuildiumClient buildiumClient,
@@ -52,6 +76,17 @@ public class AddressSyncService
         this.addressMatcher = addressMatcher;
     }
 
+    /**
+     * Executes the full sync workflow for the given request configuration.
+     *
+     * Fetches records from Salesforce, Google Sheets (or a local CSV), and optionally
+     * Buildium; normalizes addresses; classifies Salesforce record quality; builds lookup
+     * maps; performs two-pass matching; and optionally writes results back to Google Sheets.
+     *
+     * @param request the sync configuration, including dry-run flag, sheet overrides, and
+     *                optional CSV path
+     * @return a summary containing record counts and any warnings generated during the run
+     */
     public AddressSyncSummary runSync(AddressSyncRequest request)
     {
         AddressSyncSummary summary = new AddressSyncSummary();
@@ -311,6 +346,14 @@ public class AddressSyncService
         }
     }
 
+    /**
+     * Delegates to {@link #runSync(AddressSyncRequest)}.
+     *
+     * Provided as a convenience alias for callers that prefer the shorter method name.
+     *
+     * @param request the sync configuration
+     * @return the sync result summary
+     */
     public AddressSyncSummary run(AddressSyncRequest request)
     {
         return runSync(request);

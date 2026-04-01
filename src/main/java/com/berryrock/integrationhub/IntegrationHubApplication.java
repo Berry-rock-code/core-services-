@@ -18,6 +18,13 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class IntegrationHubApplication
 {
     /**
+     * Default constructor for the application entry point class.
+     */
+    public IntegrationHubApplication()
+    {
+    }
+
+    /**
      * Bootstraps the Spring application context and starts the embedded server.
      *
      * @param args command-line arguments passed through to Spring Boot

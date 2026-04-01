@@ -18,6 +18,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Orchestrates the full address pipeline that runs at application startup.
+ *
+ * Part of the service layer — fetches address records from Salesforce, the Google Sheets
+ * Loan Tape, and Buildium, performs multi-pass normalized address matching, and writes
+ * matched results back to Google Sheets.
+ *
+ * Invoked by {@link AddressPipelineRunner} via {@link #runPipeline()} immediately after
+ * the Spring context is initialized. The pipeline is skipped entirely when
+ * {@code address.pipeline.enabled} is {@code false}.
+ */
 @Service
 public class AddressPipelineService
 {
@@ -30,6 +41,16 @@ public class AddressPipelineService
     private final AddressQualityService qualityService;
     private final AddressPipelineProperties properties;
 
+    /**
+     * Constructs the pipeline service with all required integration clients and helpers.
+     *
+     * @param salesforceClient   client for fetching Opportunity records from Salesforce
+     * @param googleSheetsClient client for reading and updating the Loan Tape sheet
+     * @param buildiumClient     client for fetching active-lease address records from Buildium
+     * @param addressNormalizer  utility for normalizing and keying address strings
+     * @param qualityService     service for classifying the quality of Salesforce address records
+     * @param properties         pipeline configuration, including enabled flag and sheet details
+     */
     public AddressPipelineService(
             SalesforceClient salesforceClient,
             GoogleSheetsClient googleSheetsClient,
@@ -47,6 +68,14 @@ public class AddressPipelineService
         this.properties = properties;
     }
 
+    /**
+     * Executes the full address matching and write-back pipeline.
+     *
+     * Fetches records from Salesforce, the Google Sheets Loan Tape, and Buildium; builds
+     * normalized lookup indexes; runs a multi-pass match (full key first, then address-line-only
+     * fallback); and writes matched rows back to Google Sheets unless dry-run mode is active.
+     * Summary counts are logged at the end of each phase.
+     */
     public void runPipeline()
     {
         if (!properties.isEnabled())

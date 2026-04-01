@@ -25,6 +25,22 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 
+/**
+ * Google Sheets API client that reads Loan Tape rows and writes address match results.
+ *
+ * Part of the client layer — uses the Google Sheets v4 Java SDK to fetch address rows
+ * from a configured spreadsheet and to batch-update matched Salesforce and Buildium IDs
+ * back into the sheet. Column positions are resolved dynamically from the header row
+ * using label mappings defined in
+ * {@link com.berryrock.integrationhub.config.AddressPipelineProperties.Header}.
+ *
+ * Authentication uses a service-account credentials file whose path is injected from
+ * {@code integration.vendor.google-sheets.credentials-path}. If the file cannot be
+ * loaded, the client falls back to Application Default Credentials.
+ *
+ * When {@code integration.vendor.google-sheets.enabled} is {@code false}, all methods
+ * return empty results or no-op without making any API calls.
+ */
 @Component
 public class GoogleSheetsClientImpl implements GoogleSheetsClient {
     private static final Logger log = LoggerFactory.getLogger(GoogleSheetsClientImpl.class);
@@ -40,6 +56,12 @@ public class GoogleSheetsClientImpl implements GoogleSheetsClient {
 
     private final AddressPipelineProperties pipelineProperties;
 
+    /**
+     * Constructs the client with the pipeline configuration required for column-header resolution.
+     *
+     * @param pipelineProperties pipeline configuration providing the header row index and
+     *                           the logical-to-physical column label mappings
+     */
     public GoogleSheetsClientImpl(AddressPipelineProperties pipelineProperties) {
         this.pipelineProperties = pipelineProperties;
     }

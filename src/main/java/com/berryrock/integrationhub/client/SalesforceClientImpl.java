@@ -21,6 +21,21 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Instant;
 import java.util.*;
 
+/**
+ * Salesforce REST API client that authenticates via the OAuth 2.0 JWT bearer token flow.
+ *
+ * Part of the client layer — performs the JWT grant to obtain a short-lived access token,
+ * then issues a SOQL query against the Opportunity object to retrieve address fields needed
+ * for the Google Sheet and Buildium sync pipeline.
+ *
+ * The RSA private key used to sign the JWT is loaded from the file path injected via
+ * {@code integration.vendor.salesforce.private-key-path}. All configurable field names
+ * and the SOQL stage filter are injected from {@code application.yml} so the query can be
+ * adapted to different Salesforce org schemas without code changes.
+ *
+ * When {@code integration.vendor.salesforce.enabled} is {@code false}, all data-fetch
+ * methods return empty lists without making any HTTP calls.
+ */
 @Component
 public class SalesforceClientImpl implements SalesforceClient
 {
@@ -70,6 +85,12 @@ public class SalesforceClientImpl implements SalesforceClient
 
     private final RestTemplate restTemplate;
 
+    /**
+     * Constructs the client with a default {@link org.springframework.web.client.RestTemplate}.
+     *
+     * All configurable properties are injected by Spring after construction via
+     * {@code @Value} field injection.
+     */
     public SalesforceClientImpl()
     {
         this.restTemplate = new RestTemplate();

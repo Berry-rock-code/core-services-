@@ -23,6 +23,13 @@ import org.springframework.stereotype.Service;
 public class AddressQualityService
 {
     /**
+     * Creates a new instance; Spring manages the lifecycle of this service.
+     */
+    public AddressQualityService()
+    {
+    }
+
+    /**
      * Three-tier quality classification for Salesforce address records.
      */
     public enum Quality

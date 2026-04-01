@@ -21,4 +21,11 @@ import org.springframework.context.annotation.Configuration;
 })
 public class IntegrationConfig
 {
+    /**
+     * Creates a new instance; Spring activates {@code @ConfigurationProperties} binding
+     * for all registered property classes.
+     */
+    public IntegrationConfig()
+    {
+    }
 }

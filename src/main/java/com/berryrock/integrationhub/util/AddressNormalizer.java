@@ -26,6 +26,13 @@ import org.springframework.stereotype.Component;
 public class AddressNormalizer
 {
     /**
+     * Creates a new instance; Spring manages the lifecycle of this component.
+     */
+    public AddressNormalizer()
+    {
+    }
+
+    /**
      * Normalizes a single address component string.
      *
      * Applies the full transformation chain described in the class Javadoc. Passing

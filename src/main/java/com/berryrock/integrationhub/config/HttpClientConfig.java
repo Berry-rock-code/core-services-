@@ -19,6 +19,13 @@ import org.springframework.web.reactive.function.client.WebClient;
 public class HttpClientConfig
 {
     /**
+     * Creates a new instance; Spring manages the lifecycle of this configuration class.
+     */
+    public HttpClientConfig()
+    {
+    }
+
+    /**
      * Provides a shared {@link WebClient.Builder} that other beans can use as a
      * starting point when they need to create their own configured client instance.
      *

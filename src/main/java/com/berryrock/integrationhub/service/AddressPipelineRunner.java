@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
  * depending on configuration.
  *
  * After the pipeline completes (or fails), the runner calls
- * {@link SpringApplication#exit(ApplicationContext, org.springframework.boot.ExitCodeGenerator)}
+ * {@link org.springframework.boot.SpringApplication}
  * to shut the JVM down cleanly. {@code System.exit()} is intentionally avoided because it
  * kills the Surefire forked JVM during test runs before the test framework can collect results.
  */

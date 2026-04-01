@@ -25,6 +25,13 @@ import java.util.function.Function;
 public class AddressMatcher
 {
     /**
+     * Creates a new instance; Spring manages the lifecycle of this component.
+     */
+    public AddressMatcher()
+    {
+    }
+
+    /**
      * Groups a list of records into a map keyed by each record's normalized address string.
      *
      * The key is extracted by applying {@code addressExtractor} to each record. Records that

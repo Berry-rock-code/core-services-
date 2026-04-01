@@ -22,6 +22,13 @@ import org.springframework.stereotype.Service;
 @Service
 public class AuditService
 {
+    /**
+     * Creates a new instance; Spring manages the lifecycle of this service.
+     */
+    public AuditService()
+    {
+    }
+
     private static final Logger auditLog = LoggerFactory.getLogger("AUDIT_LOGGER");
 
     /**

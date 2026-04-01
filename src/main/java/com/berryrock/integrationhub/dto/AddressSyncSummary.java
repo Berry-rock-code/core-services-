@@ -13,6 +13,13 @@ import java.util.List;
 public class AddressSyncSummary
 {
     /**
+     * Creates a new instance with all counters at zero and an empty warnings list.
+     */
+    public AddressSyncSummary()
+    {
+    }
+
+    /**
      * Overall status of the sync operation.
      * Set to {@code "SUCCESS"} when the pipeline completes without a fatal error.
      */

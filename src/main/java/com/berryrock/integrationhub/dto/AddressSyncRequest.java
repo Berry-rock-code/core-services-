@@ -11,6 +11,13 @@ package com.berryrock.integrationhub.dto;
 public class AddressSyncRequest
 {
     /**
+     * Creates a new instance with all fields at their default values.
+     */
+    public AddressSyncRequest()
+    {
+    }
+
+    /**
      * When {@code true}, the pipeline performs all matching work but does not write
      * any results back to Google Sheets. Useful for validating match rates without
      * modifying live data.

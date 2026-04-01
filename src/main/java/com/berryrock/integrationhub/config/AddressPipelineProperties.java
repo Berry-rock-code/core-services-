@@ -18,6 +18,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class AddressPipelineProperties
 {
     /**
+     * Creates a new instance; field values are populated by Spring Boot from the
+     * {@code address.pipeline.*} configuration prefix.
+     */
+    public AddressPipelineProperties()
+    {
+    }
+
+    /**
      * Master on/off switch for the pipeline.
      * When {@code false}, the pipeline runner exits immediately without making any
      * external calls.
@@ -181,6 +189,13 @@ public class AddressPipelineProperties
      */
     public static class Header
     {
+        /**
+         * Creates a new instance with all column label fields set to their default values.
+         */
+        public Header()
+        {
+        }
+
         /** Header label for the street address column. Default: {@code "Address"}. */
         private String address = "Address";
 
