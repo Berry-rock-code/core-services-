@@ -200,13 +200,13 @@ public class AddressPipelineService
 
         List<SheetBatchUpdateRequest> updates = new ArrayList<>();
 
-        int ltMatchedToSf = 0;
-        int ltMatchedToSfPartial = 0;
-        int ltNoSfMatch = 0;
-        int ltMatchedToBuildium = 0;
-        int ltNoBuildiumMatch = 0;
-        int ltAmbiguousBuildiumMatch = 0;
-        int ltSkipped = 0;
+        int ltMatchedToSf = 0;           // Loan Tape rows matched to a CLEAN Salesforce record (full or address-only key)
+        int ltMatchedToSfPartial = 0;    // Loan Tape rows matched to a PARTIAL Salesforce record via address-only fallback
+        int ltNoSfMatch = 0;             // Loan Tape rows for which no Salesforce record was found
+        int ltMatchedToBuildium = 0;     // Loan Tape rows that also matched exactly one Buildium unit
+        int ltNoBuildiumMatch = 0;       // Loan Tape rows with a Salesforce match but no matching Buildium unit
+        int ltAmbiguousBuildiumMatch = 0; // Loan Tape rows where multiple Buildium units shared the same normalized key
+        int ltSkipped = 0;               // Loan Tape rows skipped because both the full key and address-only key were blank
 
         for (GoogleSheetAddressRow row : sheetRows)
         {
