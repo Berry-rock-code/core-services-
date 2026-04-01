@@ -1,4 +1,5 @@
 package com.berryrock.integrationhub.controller;
+// LAYER: PLATFORM -- stays in integration-hub
 
 import com.berryrock.integrationhub.service.IntegrationHealthService;
 import org.springframework.http.ResponseEntity;

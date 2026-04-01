@@ -1,4 +1,5 @@
 package com.berryrock.integrationhub.dto;
+// LAYER: FEATURE:address-pipeline -- moves to address-pipeline repo
 
 /**
  * Request body for the address sync REST endpoint.

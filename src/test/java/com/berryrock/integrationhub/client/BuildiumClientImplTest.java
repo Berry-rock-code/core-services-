@@ -1,4 +1,5 @@
 package com.berryrock.integrationhub.client;
+// LAYER: PLATFORM -- stays in integration-hub
 
 import com.berryrock.integrationhub.config.BuildiumProperties;
 import com.berryrock.integrationhub.model.BuildiumAddressRecord;

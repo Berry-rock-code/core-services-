@@ -1,4 +1,5 @@
 package com.berryrock.integrationhub.config;
+// LAYER: MIXED -- contains both platform and feature concerns; needs splitting before extraction
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

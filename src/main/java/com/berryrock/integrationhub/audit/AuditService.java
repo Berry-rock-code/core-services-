@@ -1,4 +1,5 @@
 package com.berryrock.integrationhub.audit;
+// LAYER: PLATFORM -- stays in integration-hub
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

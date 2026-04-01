@@ -1,4 +1,5 @@
 package com.berryrock.integrationhub.config;
+// LAYER: PLATFORM -- stays in integration-hub
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

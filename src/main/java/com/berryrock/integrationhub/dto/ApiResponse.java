@@ -1,4 +1,5 @@
 package com.berryrock.integrationhub.dto;
+// LAYER: PLATFORM -- stays in integration-hub
 
 import java.time.Instant;
 

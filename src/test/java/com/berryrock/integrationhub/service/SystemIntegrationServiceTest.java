@@ -1,4 +1,5 @@
 package com.berryrock.integrationhub.service;
+// LAYER: PLATFORM -- stays in integration-hub
 
 import com.berryrock.integrationhub.audit.AuditService;
 import com.berryrock.integrationhub.client.BuildiumClient;

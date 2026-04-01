@@ -1,4 +1,5 @@
 package com.berryrock.integrationhub.model;
+// LAYER: FEATURE:address-pipeline -- moves to address-pipeline repo
 
 /**
  * Represents a single Salesforce Opportunity record as fetched by the address pipeline.

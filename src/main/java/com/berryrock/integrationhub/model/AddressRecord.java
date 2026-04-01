@@ -1,4 +1,5 @@
 package com.berryrock.integrationhub.model;
+// LAYER: FEATURE:address-pipeline -- moves to address-pipeline repo
 
 /**
  * Base representation of an address record shared across integration systems.

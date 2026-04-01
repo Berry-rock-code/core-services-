@@ -1,4 +1,5 @@
 package com.berryrock.integrationhub.model;
+// LAYER: FEATURE:address-pipeline -- moves to address-pipeline repo
 
 /**
  * Describes the cell values to write back into a single Google Sheet row.

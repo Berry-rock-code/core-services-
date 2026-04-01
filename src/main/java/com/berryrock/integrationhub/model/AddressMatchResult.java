@@ -1,4 +1,5 @@
 package com.berryrock.integrationhub.model;
+// LAYER: FEATURE:address-pipeline -- moves to address-pipeline repo
 
 /**
  * Captures the outcome of attempting to match a single address across systems.

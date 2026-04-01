@@ -1,4 +1,5 @@
 package com.berryrock.integrationhub.client;
+// LAYER: MIXED -- contains both platform and feature concerns; needs splitting before extraction
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
@@ -169,6 +170,7 @@ public class SalesforceClientImpl implements SalesforceClient
     }
 
     @Override
+    // TODO: rename to a generic fetchOpportunities(query) before extraction
     public List<SalesforceAddressRecord> fetchAddressesForGoogleSheetBuildiumSync()
     {
         if (!enabled)
