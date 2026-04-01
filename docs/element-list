@@ -1,0 +1,9 @@
+com.berryrock.integrationhub
+com.berryrock.integrationhub.audit
+com.berryrock.integrationhub.client
+com.berryrock.integrationhub.config
+com.berryrock.integrationhub.controller
+com.berryrock.integrationhub.dto
+com.berryrock.integrationhub.model
+com.berryrock.integrationhub.service
+com.berryrock.integrationhub.util
